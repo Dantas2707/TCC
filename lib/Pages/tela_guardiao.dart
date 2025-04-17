@@ -21,9 +21,7 @@ class _TelaGuardiaoUnificadaState extends State<TelaGuardiaoUnificada> {
     super.dispose();
   }
 
-  // --------------------------------------------------------
-  // 1) Enviar convite por e-mail
-  // --------------------------------------------------------
+  // 1) Enviar convite
   Future<void> _enviarConvite() async {
     final email = _emailController.text.trim();
     if (email.isEmpty) {
@@ -45,9 +43,7 @@ class _TelaGuardiaoUnificadaState extends State<TelaGuardiaoUnificada> {
     }
   }
 
-  // --------------------------------------------------------
-  // 2) Aceitar / recusar convites recebidos
-  // --------------------------------------------------------
+  // 2) Aceitar / recusar convites
   Future<void> _aceitarConvite(String conviteId, String idUsuario) async {
     try {
       await _service.aceitarConviteGuardiao(conviteId, idUsuario, _meuId);
@@ -74,13 +70,10 @@ class _TelaGuardiaoUnificadaState extends State<TelaGuardiaoUnificada> {
     }
   }
 
-  Stream<QuerySnapshot> get _convitesPendentesStream {
-    return _service.getConvitesRecebidosGuardiao(_meuId);
-  }
+  Stream<QuerySnapshot> get _convitesPendentesStream =>
+      _service.getConvitesRecebidosGuardiao(_meuId);
 
-  // --------------------------------------------------------
-  // 3) Listar "Meus Guardiões" (quem me protege)
-  // --------------------------------------------------------
+  // 3) Lista de guardiões ativos + inativos
   Widget _buildMeusGuardioes() {
     return FutureBuilder<DocumentSnapshot>(
       future: FirebaseFirestore.instance.collection('usuario').doc(_meuId).get(),
@@ -88,46 +81,148 @@ class _TelaGuardiaoUnificadaState extends State<TelaGuardiaoUnificada> {
         if (snap.connectionState == ConnectionState.waiting) {
           return Center(child: CircularProgressIndicator());
         }
-        if (!snap.hasData || !snap.data!.exists) {
+        final userDoc = snap.data;
+        if (userDoc == null || !userDoc.exists) {
           return Text('Nenhum guardião cadastrado.');
         }
-        final data = snap.data!.data()! as Map<String, dynamic>;
-        final List<dynamic> guardianIds = data['guardioes'] ?? [];
-        if (guardianIds.isEmpty) {
-          return Text('Nenhum guardião cadastrado.');
-        }
-        return ListView.builder(
-          shrinkWrap: true,
-          physics: NeverScrollableScrollPhysics(),
-          itemCount: guardianIds.length,
-          itemBuilder: (ctx2, i) {
-            final guardId = guardianIds[i] as String;
-            return FutureBuilder<DocumentSnapshot>(
-              future: FirebaseFirestore.instance.collection('usuario').doc(guardId).get(),
-              builder: (c2, s2) {
-                if (s2.connectionState == ConnectionState.waiting) {
-                  return ListTile(title: Text('Carregando...'));
-                }
-                if (!s2.hasData || !s2.data!.exists) {
-                  return ListTile(title: Text('Guardião não encontrado'));
-                }
-                final gData = s2.data!.data()! as Map<String, dynamic>;
-                return ListTile(
-                  leading: Icon(Icons.shield),
-                  title: Text(gData['nome'] ?? 'Sem nome'),
-                  subtitle: Text(gData['email'] ?? ''),
-                );
-              },
+        final data = userDoc.data()! as Map<String, dynamic>;
+        final List<String> ativos = List<String>.from(data['guardioes'] ?? []);
+
+        // 3.1) Gueriões ativos
+        final activeSection = ativos.isEmpty
+            ? Text('Nenhum guardião ativo.')
+            : ListView.builder(
+                shrinkWrap: true,
+                physics: NeverScrollableScrollPhysics(),
+                itemCount: ativos.length,
+                itemBuilder: (ctx2, i) {
+                  final gid = ativos[i];
+                  return FutureBuilder<DocumentSnapshot>(
+                    future: FirebaseFirestore.instance.collection('usuario').doc(gid).get(),
+                    builder: (c2, s2) {
+                      if (s2.connectionState == ConnectionState.waiting) {
+                        return ListTile(title: Text('Carregando...'));
+                      }
+                      if (s2.data == null || !s2.data!.exists) {
+                        return ListTile(title: Text('Guardião não encontrado'));
+                      }
+                      final g = s2.data!.data()! as Map<String, dynamic>;
+                      return ListTile(
+                        leading: Icon(Icons.shield),
+                        title: Text(g['nome'] ?? 'Sem nome'),
+                        subtitle: Text(g['email'] ?? ''),
+                        trailing: IconButton(
+                          icon: Icon(Icons.delete, color: Colors.red),
+                          tooltip: 'Inativar guardião',
+                          onPressed: () async {
+                            // remove do array
+                            await FirebaseFirestore.instance
+                                .collection('usuario')
+                                .doc(_meuId)
+                                .update({
+                              'guardioes': FieldValue.arrayRemove([gid])
+                            });
+                            setState(() {});
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Guardião inativado')),
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  );
+                },
+              );
+
+        // 3.2) Gueriões inativados: aqueles aceitos mas não no array
+        final inviteStream = FirebaseFirestore.instance
+            .collection('guardiões')
+            .where('id_usuario', isEqualTo: _meuId)
+            .where('status', isEqualTo: 'aceito')
+            .snapshots();
+
+        final inactiveSection = StreamBuilder<QuerySnapshot>(
+          stream: inviteStream,
+          builder: (ctx3, snap3) {
+            if (snap3.connectionState == ConnectionState.waiting) {
+              return SizedBox.shrink();
+            }
+            final docs = snap3.data?.docs ?? [];
+            // filtrar só os inativos
+            final inativos = docs
+                .map((d) => d['id_guardiao'] as String)
+                .where((gid) => !ativos.contains(gid))
+                .toList();
+            if (inativos.isEmpty) {
+              return SizedBox.shrink();
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(height: 16),
+                Text('Guardião(ões) inativado(s):',
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: NeverScrollableScrollPhysics(),
+                  itemCount: inativos.length,
+                  itemBuilder: (ctx4, j) {
+                    final gid = inativos[j];
+                    return FutureBuilder<DocumentSnapshot>(
+                      future: FirebaseFirestore.instance
+                          .collection('usuario')
+                          .doc(gid)
+                          .get(),
+                      builder: (c4, s4) {
+                        if (s4.connectionState == ConnectionState.waiting) {
+                          return ListTile(title: Text('Carregando...'));
+                        }
+                        if (s4.data == null || !s4.data!.exists) {
+                          return ListTile(title: Text('Guardião não encontrado'));
+                        }
+                        final g = s4.data!.data()! as Map<String, dynamic>;
+                        return ListTile(
+                          leading: Icon(Icons.shield_outlined),
+                          title: Text(g['nome'] ?? 'Sem nome'),
+                          subtitle: Text(g['email'] ?? ''),
+                          trailing: IconButton(
+                            icon: Icon(Icons.check, color: Colors.green),
+                            tooltip: 'Ativar guardião',
+                            onPressed: () async {
+                              await FirebaseFirestore.instance
+                                  .collection('usuario')
+                                  .doc(_meuId)
+                                  .update({
+                                'guardioes': FieldValue.arrayUnion([gid])
+                              });
+                              setState(() {});
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Guardião ativado')),
+                              );
+                            },
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ],
             );
           },
+        );
+
+        return Column(
+          children: [
+            activeSection,
+            inactiveSection,
+          ],
         );
       },
     );
   }
 
-  // --------------------------------------------------------
-  // 4) Listar "Usuários que eu guardo" (para quem sou guardião)
-  // --------------------------------------------------------
+  // 4) Usuários que eu guardo
   Widget _buildUsuariosQueGuardo() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -151,12 +246,15 @@ class _TelaGuardiaoUnificadaState extends State<TelaGuardiaoUnificada> {
             final doc = docs[i];
             final idUsuario = doc['id_usuario'] as String;
             return FutureBuilder<DocumentSnapshot>(
-              future: FirebaseFirestore.instance.collection('usuario').doc(idUsuario).get(),
+              future: FirebaseFirestore.instance
+                  .collection('usuario')
+                  .doc(idUsuario)
+                  .get(),
               builder: (c3, s3) {
                 if (s3.connectionState == ConnectionState.waiting) {
                   return ListTile(title: Text('Carregando...'));
                 }
-                if (!s3.hasData || !s3.data!.exists) {
+                if (s3.data == null || !s3.data!.exists) {
                   return ListTile(title: Text('Usuário não encontrado'));
                 }
                 final uData = s3.data!.data()! as Map<String, dynamic>;
@@ -173,57 +271,54 @@ class _TelaGuardiaoUnificadaState extends State<TelaGuardiaoUnificada> {
     );
   }
 
-  // --------------------------------------------------------
-  // Montagem da UI
-  // --------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Guardiões'),
+        title: const Text('Guardiões'),
         backgroundColor: Colors.pink,
       ),
       body: SingleChildScrollView(
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Enviar convite
-            Text('Enviar convite',
+            const Text('Enviar Convite',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             TextField(
               controller: _emailController,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'E‑mail do Guardião',
                 border: OutlineInputBorder(),
               ),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             ElevatedButton(
               onPressed: _enviarConvite,
-              child: Text('Enviar Convite'),
+              child: const Text('Enviar Convite'),
             ),
 
-            Divider(height: 32),
+            const Divider(height: 32),
 
             // Convites pendentes
-            Text('Convites Recebidos',
+            const Text('Convites Recebidos',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             StreamBuilder<QuerySnapshot>(
               stream: _convitesPendentesStream,
               builder: (ctx, snap) {
                 if (snap.connectionState == ConnectionState.waiting) {
-                  return Center(child: CircularProgressIndicator());
+                  return const Center(child: CircularProgressIndicator());
                 }
                 final convites = snap.data?.docs ?? [];
                 if (convites.isEmpty) {
-                  return Text('Nenhum convite pendente.');
+                  return const Text('Nenhum convite pendente.');
                 }
                 return ListView.builder(
                   shrinkWrap: true,
-                  physics: NeverScrollableScrollPhysics(),
+                  physics: const NeverScrollableScrollPhysics(),
                   itemCount: convites.length,
                   itemBuilder: (ctx2, i) {
                     final doc = convites[i];
@@ -231,7 +326,7 @@ class _TelaGuardiaoUnificadaState extends State<TelaGuardiaoUnificada> {
                     final nomeUsuario = doc['nome_usuario'] as String? ?? '';
                     final idUsuario = doc['id_usuario'] as String;
                     return Card(
-                      margin: EdgeInsets.symmetric(vertical: 6),
+                      margin: const EdgeInsets.symmetric(vertical: 6),
                       child: ListTile(
                         title: Text('Convite de: $nomeUsuario'),
                         subtitle: Text('Status: ${doc['status']}'),
@@ -239,12 +334,12 @@ class _TelaGuardiaoUnificadaState extends State<TelaGuardiaoUnificada> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
-                              icon: Icon(Icons.check, color: Colors.green),
+                              icon: const Icon(Icons.check, color: Colors.green),
                               onPressed: () =>
                                   _aceitarConvite(conviteId, idUsuario),
                             ),
                             IconButton(
-                              icon: Icon(Icons.close, color: Colors.red),
+                              icon: const Icon(Icons.close, color: Colors.red),
                               onPressed: () => _recusarConvite(conviteId),
                             ),
                           ],
@@ -256,20 +351,20 @@ class _TelaGuardiaoUnificadaState extends State<TelaGuardiaoUnificada> {
               },
             ),
 
-            Divider(height: 32),
+            const Divider(height: 32),
 
-            // Meus guardiões
-            Text('Meus guardiões',
+            // Meus guardiões com inativação / ativação
+            const Text('Meus Guardiões',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             _buildMeusGuardioes(),
 
-            Divider(height: 32),
+            const Divider(height: 32),
 
             // Usuários que eu guardo
-            Text('Usuários que eu guardo',
+            const Text('Usuários que eu guardo',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             _buildUsuariosQueGuardo(),
           ],
         ),

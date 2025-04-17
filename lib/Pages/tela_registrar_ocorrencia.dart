@@ -1,4 +1,4 @@
-import 'dart:io'; // Necessário para manipular arquivos locais
+import 'dart:io';
 import 'package:crud/services/firestore.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
@@ -7,107 +7,154 @@ import 'package:flutter/material.dart';
 import 'package:flutter_background_messenger/flutter_background_messenger.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-// Definição correta da classe OcorrenciaPage
+/// Modelo para cada guardião
+class _Guardiao {
+  final String id;
+  final String nome;
+  final String telefone;
+  bool selecionado;
+  _Guardiao({
+    required this.id,
+    required this.nome,
+    required this.telefone,
+    this.selecionado = false,
+  });
+}
+
 class OcorrenciaPage extends StatefulWidget {
   @override
   _OcorrenciaPageState createState() => _OcorrenciaPageState();
 }
 
 class _OcorrenciaPageState extends State<OcorrenciaPage> {
-  final FirestoreService firestoreService = FirestoreService();
-  final TextEditingController _relatoController = TextEditingController();
-  final TextEditingController _textoSocorroController = TextEditingController();
-  bool _enviarParaGuardiao = false;
-  String? _tipoOcorrenciaSelecionado;
+  final FirestoreService _service = FirestoreService();
+  final _relatoCtrl = TextEditingController();
+  final _textoSocorroCtrl = TextEditingController();
+  final _messenger = FlutterBackgroundMessenger();
+
+  String? _tipoSelecionado;
   String? _gravidadeSelecionada;
 
-  // Lista para armazenar os anexos selecionados
   List<PlatformFile> _anexos = [];
-
   static const int maxFileSize = 5 * 1024 * 1024;
-  String? _ocorrenciaId;  // ID da ocorrência
+
+  List<_Guardiao> _guardioes = [];
 
   @override
   void initState() {
     super.initState();
-    _textoSocorroController.text = "Atenção! Estou sob ameaça! Preciso de ajuda!";
+    _textoSocorroCtrl.text = "Atenção! Estou sob ameaça! Preciso de ajuda!";
+    _loadGuardioes();
   }
 
-  // Função para registrar a ocorrência
-  void _registrarOcorrencia() async {
-    if (_tipoOcorrenciaSelecionado == null || _gravidadeSelecionada == null) {
+  Future<void> _loadGuardioes() async {
+    final uid = FirebaseAuth.instance.currentUser!.uid;
+    final doc = await FirebaseFirestore.instance.collection('usuario').doc(uid).get();
+    if (!doc.exists) return;
+    final data = doc.data()!;
+    final ids = List<String>.from(data['guardioes'] ?? []);
+    final list = <_Guardiao>[];
+    for (var gid in ids) {
+      final gd = await FirebaseFirestore.instance.collection('usuario').doc(gid).get();
+      if (!gd.exists) continue;
+      final d = gd.data()!;
+      list.add(_Guardiao(
+        id: gid,
+        nome: d['nome'] ?? 'Sem nome',
+        telefone: d['numerotelefone'] ?? '',
+      ));
+    }
+    setState(() => _guardioes = list);
+  }
+
+  Future<void> _pickAnexos() async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      type: FileType.custom,
+      allowedExtensions: ['jpg','jpeg','png','mp4','mov','avi','mp3','wav'],
+    );
+    if (result != null) {
+      setState(() => _anexos.addAll(result.files));
+    }
+  }
+
+  Future<void> _registrarOcorrencia() async {
+    // 1) valida dropdowns
+    if (_tipoSelecionado == null || _gravidadeSelecionada == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Selecione um tipo de ocorrência e gravidade')),
+        SnackBar(content: Text('Selecione tipo e gravidade')),
       );
       return;
     }
 
-    String relato = _relatoController.text.trim();
-    String textoSocorro = _textoSocorroController.text.trim();
-
+    // 2) valida texto
+    final relato = _relatoCtrl.text.trim();
+    final textoSocorro = _textoSocorroCtrl.text.trim();
     if (relato.isEmpty || textoSocorro.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Preencha todos os campos')),
       );
       return;
     }
+    if (relato.length < 6 || relato.length > 255) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Relato deve ter entre 6 e 255 caracteres')),
+      );
+      return;
+    }
 
+    // 3) grava no Firestore
     try {
-      await firestoreService.addOcorrencia(
-        _tipoOcorrenciaSelecionado!,
+      await _service.addOcorrencia(
+        _tipoSelecionado!,
         _gravidadeSelecionada!,
-        relato,
+        relato.toLowerCase(),
         textoSocorro,
-        _enviarParaGuardiao,
+        _guardioes.any((g) => g.selecionado),
         anexos: _anexos,
       );
-
-      // Limpar os campos e anexos após registrar
-      _relatoController.clear();
-      _textoSocorroController.clear();
-      setState(() {
-        _tipoOcorrenciaSelecionado = null;
-        _gravidadeSelecionada = null;
-        _enviarParaGuardiao = false;
-        _anexos = [];
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ocorrência registrada com sucesso')),
-      );
-
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Erro ao registrar ocorrência: $e')),
       );
+      return;
     }
-  }
 
-  // Função para finalizar a ocorrência
-  Future<void> _finalizarOcorrencia() async {
-    if (_ocorrenciaId != null) {
-      try {
-        // Atualiza o status da ocorrência para 'finalizado'
-        await FirebaseFirestore.instance.collection('ocorrencias').doc(_ocorrenciaId).update({
-          'status': 'finalizado',
-          'timestamp': Timestamp.now(),
-        });
-
+    // 4) envia SMS apenas para guardiões selecionados
+    final selecionados = _guardioes.where((g) => g.selecionado).toList();
+    if (selecionados.isNotEmpty) {
+      // checa permissão
+      if (!await Permission.sms.request().isGranted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ocorrência finalizada com sucesso')),
+          SnackBar(content: Text('Permissão de SMS negada')),
         );
-      } catch (e) {
+      } else {
+        for (var g in selecionados) {
+          try {
+            await _messenger.sendSMS(
+              phoneNumber: g.telefone,
+              message: textoSocorro,
+            );
+          } catch (_) { /* silêncio em falha individual */ }
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao finalizar a ocorrência: $e')),
+          SnackBar(content: Text('SMS enviado para ${selecionados.length} guardião(ões)')),
         );
       }
     }
-  }
 
-  // Função para enviar o SOS (mensagem para os guardiões)
-  void _sendSOS() {
-    print('S.O.S Enviado');
-    // Aqui você pode implementar a lógica para enviar a mensagem de socorro (SMS ou outra ação)
+    // 5) limpa campos e estado
+    _relatoCtrl.clear();
+    _textoSocorroCtrl.clear();
+    setState(() {
+      _tipoSelecionado = null;
+      _gravidadeSelecionada = null;
+      _anexos.clear();
+      for (var g in _guardioes) g.selecionado = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Ocorrência registrada com sucesso')),
+    );
   }
 
   @override
@@ -118,92 +165,75 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
         backgroundColor: Colors.pink,
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Dropdown para selecionar o tipo de ocorrência
+              // -- tipo de ocorrência --
               StreamBuilder<QuerySnapshot>(
-                stream: firestoreService.gettipoOcorrenciaStream(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
+                stream: _service.gettipoOcorrenciaStream(),
+                builder: (ctx, snap) {
+                  if (snap.connectionState == ConnectionState.waiting)
                     return CircularProgressIndicator();
-                  }
-                  if (snapshot.hasError) {
-                    return Text('Erro: ${snapshot.error}');
-                  }
-                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  final docs = snap.data?.docs ?? [];
+                  if (docs.isEmpty) {
                     return Text(
                       'Nenhum tipo de ocorrência encontrado. Entre em contato com o administrador.',
                       style: TextStyle(color: Colors.red),
                     );
                   }
-                  List<String> tiposOcorrencia = snapshot.data!.docs.map((doc) {
-                    return doc['tipoOcorrencia'] as String;
-                  }).toList();
+                  final tipos = docs.map((d) => d['tipoOcorrencia'] as String).toList();
                   return DropdownButtonFormField<String>(
                     decoration: InputDecoration(
-                      labelText: 'Selecione o tipo de ocorrência',
+                      labelText: 'Tipo de ocorrência',
                       border: OutlineInputBorder(),
                     ),
-                    onChanged: (value) {
-                      setState(() {
-                        _tipoOcorrenciaSelecionado = value;
-                      });
-                    },
-                    value: _tipoOcorrenciaSelecionado,
-                    items: tiposOcorrencia.map((tipo) {
-                      return DropdownMenuItem<String>(
-                        value: tipo,
-                        child: Text(tipo),
-                      );
-                    }).toList(),
+                    value: _tipoSelecionado,
+                    items: tipos
+                        .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                        .toList(),
+                    onChanged: (v) => setState(() => _tipoSelecionado = v),
                   );
                 },
               ),
               SizedBox(height: 16),
-              // Dropdown para selecionar a gravidade
+
+              // -- gravidade --
               StreamBuilder<QuerySnapshot>(
-                stream: firestoreService.getgravidadeStream(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
+                stream: _service.getgravidadeStream(),
+                builder: (ctx, snap) {
+                  if (snap.connectionState == ConnectionState.waiting)
                     return CircularProgressIndicator();
+                  final docs = snap.data?.docs ?? [];
+                  if (docs.isEmpty) {
+                    return Text(
+                      'Nenhuma gravidade cadastrada. Entre em contato com o administrador.',
+                      style: TextStyle(color: Colors.red),
+                    );
                   }
-                  if (snapshot.hasError) {
-                    return Text('Erro: ${snapshot.error}');
-                  }
-                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    return Text('Nenhuma gravidade encontrada.');
-                  }
-                  List<String> gravidades = snapshot.data!.docs.map((doc) {
-                    return doc['gravidade'] as String;
-                  }).toList();
-                  gravidades.removeWhere((grav) => grav.toLowerCase() == 'gravissíma');
+                  final gravs = docs
+                      .map((d) => d['gravidade'] as String)
+                      .where((g) => g.toLowerCase() != 'gravissíma')
+                      .toList();
                   return DropdownButtonFormField<String>(
                     decoration: InputDecoration(
-                      labelText: 'Selecione a gravidade',
+                      labelText: 'Gravidade',
                       border: OutlineInputBorder(),
                     ),
-                    onChanged: (value) {
-                      setState(() {
-                        _gravidadeSelecionada = value;
-                      });
-                    },
                     value: _gravidadeSelecionada,
-                    items: gravidades.map((grav) {
-                      return DropdownMenuItem<String>(
-                        value: grav,
-                        child: Text(grav),
-                      );
-                    }).toList(),
+                    items: gravs
+                        .map((g) => DropdownMenuItem(value: g, child: Text(g)))
+                        .toList(),
+                    onChanged: (v) => setState(() => _gravidadeSelecionada = v),
                   );
                 },
               ),
               SizedBox(height: 16),
-              // Campo de texto para o relato
+
+              // -- relato --
               TextFormField(
-                controller: _relatoController,
+                controller: _relatoCtrl,
                 maxLines: 3,
                 decoration: InputDecoration(
                   labelText: 'Relato',
@@ -214,9 +244,11 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                 ),
               ),
               SizedBox(height: 16),
-              // Campo de texto para o texto de socorro
+              
+
+              // -- texto socorro --
               TextFormField(
-                controller: _textoSocorroController,
+                controller: _textoSocorroCtrl,
                 maxLines: 3,
                 maxLength: 255,
                 decoration: InputDecoration(
@@ -228,37 +260,59 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                 ),
               ),
               SizedBox(height: 16),
-              // Checkbox para enviar SMS ao guardião
-              Row(
-                children: [
-                  Checkbox(
-                    value: _enviarParaGuardiao,
-                    onChanged: (bool? value) {
-                      setState(() {
-                        _enviarParaGuardiao = value!;
-                      });
-                    },
-                  ),
-                  Text('Mandar texto socorro para guardião'),
-                ],
+
+              // -- anexar mídia --
+              ElevatedButton.icon(
+                onPressed: _pickAnexos,
+                icon: Icon(Icons.attach_file),
+                label: Text('Anexar Mídia'),
               ),
-              SizedBox(height: 16),
-              // Botões de ação
+              if (_anexos.isNotEmpty) ...[
+                SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: _anexos.asMap().entries.map((entry) {
+                    final idx = entry.key;
+                    final file = entry.value;
+                    return Chip(
+                      label: Text(file.name, overflow: TextOverflow.ellipsis),
+                      deleteIcon: Icon(Icons.close),
+                      onDeleted: () => setState(() => _anexos.removeAt(idx)),
+                    );
+                  }).toList(),
+                ),
+                SizedBox(height: 16),
+              ],
+
+              // -- lista de guardiões --
+              if (_guardioes.isEmpty)
+                Text('Você não possui guardiões cadastrados.')
+              else ...[
+                Text('Selecione para quais enviar SMS:',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                ..._guardioes.map((g) => CheckboxListTile(
+                      title: Text(g.nome),
+                      subtitle: Text(g.telefone),
+                      value: g.selecionado,
+                      onChanged: (v) => setState(() => g.selecionado = v!),
+                    )),
+                SizedBox(height: 16),
+              ],
+
+              // -- botões --
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   ElevatedButton(
                     onPressed: _registrarOcorrencia,
-                    style: ButtonStyle(
-                      backgroundColor: MaterialStateProperty.all(Colors.red),
-                    ),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                     child: Text('Registrar'),
                   ),
+                  // mantenho um S.O.S manual, mas opcional:
                   ElevatedButton(
-                    onPressed: _sendSOS,
-                    style: ButtonStyle(
-                      backgroundColor: MaterialStateProperty.all(Colors.orange),
-                    ),
+                    onPressed: () => _registrarOcorrencia(),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
                     child: Text('S.O.S'),
                   ),
                 ],
