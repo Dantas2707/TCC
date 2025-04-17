@@ -4,6 +4,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
 
 class FirestoreService {
+
   final CollectionReference tipoOcorrencia =
       FirebaseFirestore.instance.collection('tipoOcorrencia');
 
@@ -250,39 +251,40 @@ class FirestoreService {
   // MÉTODO DE ADIÇÃO DE OCORRÊNCIA COM UPLOAD DE ANEXOS
   // ==================================================================
   Future<void> addOcorrencia(
-    String tipoOcorrencia,
-    String gravidade,
-    String relato,
-    String textoSocorro,
-    bool enviarParaGuardiao, {
-    List<PlatformFile>? anexos,
-  }) async {
-    List<String> anexosUrls = [];
+  String tipoOcorrencia,
+  String gravidade,
+  String relato,
+  String textoSocorro,
+  bool enviarParaGuardiao, {
+  List<PlatformFile>? anexos,
+}) async {
+  List<String> anexosUrls = [];
 
-    // Se houver anexos, faz o upload de cada arquivo para o Firebase Storage.
-    if (anexos != null && anexos.isNotEmpty) {
-      for (var file in anexos) {
-        try {
-          String url = await uploadFile(file);
-          anexosUrls.add(url);
-        } catch (e) {
-          print('Erro ao fazer upload do anexo ${file.name}: $e');
-          // Aqui você pode optar por interromper o processo ou continuar sem esse arquivo.
-        }
+  // Se houver anexos, faz o upload de cada arquivo para o Firebase Storage.
+  if (anexos != null && anexos.isNotEmpty) {
+    for (var file in anexos) {
+      try {
+        String url = await uploadFile(file);
+        anexosUrls.add(url);
+      } catch (e) {
+        print('Erro ao fazer upload do anexo ${file.name}: $e');
       }
     }
-
-    // Salva a ocorrência no Firestore, incluindo os URLs dos anexos.
-    await ocorrencias.add({
-      'tipoOcorrencia': tipoOcorrencia,
-      'gravidade': gravidade,
-      'relato': relato,
-      'textoSocorro': textoSocorro,
-      'enviarParaGuardiao': enviarParaGuardiao,
-      'anexos': anexosUrls,
-      'timestamp': Timestamp.now(),
-    });
   }
+
+  // Salva a ocorrência no Firestore, incluindo o campo de status "aberto"
+  await ocorrencias.add({
+    'tipoOcorrencia': tipoOcorrencia,
+    'gravidade': gravidade,
+    'relato': relato,
+    'textoSocorro': textoSocorro,
+    'enviarParaGuardiao': enviarParaGuardiao,
+    'status': 'aberto',  // Status inicial da ocorrência
+    'anexos': anexosUrls,
+    'timestamp': Timestamp.now(),
+  });
+}
+
 
   Stream<QuerySnapshot> getOcorrenciasStream() {
     return ocorrencias.orderBy('timestamp', descending: true).snapshots();
@@ -312,4 +314,13 @@ class FirestoreService {
     TaskSnapshot snapshot = await uploadTask;
     return await snapshot.ref.getDownloadURL();
   }
+
+  // FINALIZAR OCORRENCIA
+Future<void> finalizarOcorrencia(String ocorrenciaId) {
+  return ocorrencias.doc(ocorrenciaId).update({
+    'status': 'finalizado',
+    'timestamp': Timestamp.now(),
+  });
+}
+
 }

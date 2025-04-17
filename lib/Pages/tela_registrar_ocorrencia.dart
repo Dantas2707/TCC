@@ -1,4 +1,3 @@
-// arquivo: ocorrencia_page.dart
 import 'dart:io'; // Necessário para manipular arquivos locais
 import 'package:crud/services/firestore.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -8,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_background_messenger/flutter_background_messenger.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+// Definição correta da classe OcorrenciaPage
 class OcorrenciaPage extends StatefulWidget {
   @override
   _OcorrenciaPageState createState() => _OcorrenciaPageState();
@@ -24,69 +24,17 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
   // Lista para armazenar os anexos selecionados
   List<PlatformFile> _anexos = [];
 
-  // Tamanho máximo dos arquivos em bytes (ex: 5 MB)
   static const int maxFileSize = 5 * 1024 * 1024;
+  String? _ocorrenciaId;  // ID da ocorrência
 
-  // Instância do FlutterBackgroundMessenger para envio de SMS em background
-  final FlutterBackgroundMessenger messenger = FlutterBackgroundMessenger();
-
-  // UID do usuário logado (usando FirebaseAuth)
-  final String _currentUserId = FirebaseAuth.instance.currentUser!.uid;
-
-  // Função para selecionar arquivos (vídeo, foto e áudio)
-  Future<void> _pickAnexos() async {
-    // Permite selecionar múltiplos arquivos dos tipos especificados.
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      type: FileType.custom,
-      allowedExtensions: ['jpg', 'jpeg', 'png', 'mp4', 'mov', 'avi', 'mp3', 'wav'],
-    );
-
-    if (result != null) {
-      List<PlatformFile> arquivosValidados = [];
-      for (var file in result.files) {
-        if (file.size > maxFileSize) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('O arquivo ${file.name} excede o tamanho permitido (5 MB).'),
-            ),
-          );
-        } else {
-          arquivosValidados.add(file);
-        }
-      }
-      setState(() {
-        _anexos = arquivosValidados;
-      });
-    }
+  @override
+  void initState() {
+    super.initState();
+    _textoSocorroController.text = "Atenção! Estou sob ameaça! Preciso de ajuda!";
   }
 
-  // Função para solicitar a permissão para envio de SMS
-  Future<bool> _requestSmsPermission() async {
-    PermissionStatus status = await Permission.sms.request();
-    return status.isGranted;
-  }
-
-  // Envia SMS em background para um número específico (guardião)
-  Future<void> _sendSmsToGuardian(String message, String phoneNumber) async {
-    try {
-      final bool success = await messenger.sendSMS(
-        phoneNumber: phoneNumber,
-        message: message,
-      );
-      if (success) {
-        print("SMS enviado para $phoneNumber");
-      } else {
-        print("Falha ao enviar SMS para $phoneNumber");
-      }
-    } catch (e) {
-      print("Erro ao enviar SMS para $phoneNumber: $e");
-    }
-  }
-
-  // Função para registrar a ocorrência e enviar SMS para os guardiões, se solicitado
+  // Função para registrar a ocorrência
   void _registrarOcorrencia() async {
-    // Validação dos dropdowns
     if (_tipoOcorrenciaSelecionado == null || _gravidadeSelecionada == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Selecione um tipo de ocorrência e gravidade')),
@@ -94,7 +42,6 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
       return;
     }
 
-    // Recupera e valida os textos
     String relato = _relatoController.text.trim();
     String textoSocorro = _textoSocorroController.text.trim();
 
@@ -105,28 +52,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
       return;
     }
 
-    if (relato.length < 6 || relato.length > 255) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('O relato deve conter entre 6 e 255 caracteres')),
-      );
-      return;
-    }
-
-    // Converte o relato para letras minúsculas
-    relato = relato.toLowerCase();
-
-    // Validação adicional para anexos (opcional, pois já é feita no pick)
-    for (var file in _anexos) {
-      if (file.size > maxFileSize) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('O arquivo ${file.name} excede o tamanho permitido')),
-        );
-        return;
-      }
-    }
-
     try {
-      // Registra a ocorrência no Firestore, incluindo os anexos
       await firestoreService.addOcorrencia(
         _tipoOcorrenciaSelecionado!,
         _gravidadeSelecionada!,
@@ -136,52 +62,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
         anexos: _anexos,
       );
 
-      // Se a opção de enviar SMS estiver marcada, envia o texto de socorro para os guardiões
-      if (_enviarParaGuardiao) {
-        // Busca o documento do usuário para obter a lista de guardiões
-        DocumentSnapshot userDoc = await FirebaseFirestore.instance
-            .collection('usuario')
-            .doc(_currentUserId)
-            .get();
-
-        // Acessa de forma segura o campo 'guardioes'
-        List<dynamic> guardianIds = [];
-        if (userDoc.exists && userDoc.data() != null) {
-          final Map<String, dynamic> data = userDoc.data() as Map<String, dynamic>;
-          if (data.containsKey('guardioes')) {
-            guardianIds = data['guardioes'];
-          }
-        }
-
-        if (guardianIds.isNotEmpty) {
-          // Solicita permissão para envio de SMS
-          if (await _requestSmsPermission()) {
-            // Para cada guardião, obtém seu documento e, se houver número, envia o SMS
-            for (var guardianId in guardianIds) {
-              DocumentSnapshot guardianDoc = await FirebaseFirestore.instance
-                  .collection('usuario')
-                  .doc(guardianId)
-                  .get();
-
-              if (guardianDoc.exists && guardianDoc.data() != null) {
-                final Map<String, dynamic> guardianData = guardianDoc.data() as Map<String, dynamic>;
-                String phoneNumber = guardianData['numerotelefone'] ?? "";
-                if (phoneNumber.isNotEmpty) {
-                  await _sendSmsToGuardian(textoSocorro, phoneNumber);
-                } else {
-                  print("Número de telefone não encontrado para o guardião: $guardianId");
-                }
-              }
-            }
-          } else {
-            print("Permissão para enviar SMS não concedida.");
-          }
-        } else {
-          print("Nenhum guardião encontrado para o usuário.");
-        }
-      }
-
-      // Limpa os campos e a lista de anexos
+      // Limpar os campos e anexos após registrar
       _relatoController.clear();
       _textoSocorroController.clear();
       setState(() {
@@ -194,11 +75,39 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ocorrência registrada com sucesso')),
       );
+
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Erro ao registrar ocorrência: $e')),
       );
     }
+  }
+
+  // Função para finalizar a ocorrência
+  Future<void> _finalizarOcorrencia() async {
+    if (_ocorrenciaId != null) {
+      try {
+        // Atualiza o status da ocorrência para 'finalizado'
+        await FirebaseFirestore.instance.collection('ocorrencias').doc(_ocorrenciaId).update({
+          'status': 'finalizado',
+          'timestamp': Timestamp.now(),
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ocorrência finalizada com sucesso')),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao finalizar a ocorrência: $e')),
+        );
+      }
+    }
+  }
+
+  // Função para enviar o SOS (mensagem para os guardiões)
+  void _sendSOS() {
+    print('S.O.S Enviado');
+    // Aqui você pode implementar a lógica para enviar a mensagem de socorro (SMS ou outra ação)
   }
 
   @override
@@ -210,7 +119,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: SingleChildScrollView( // Evita overflow caso haja muitos anexos
+        child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -302,10 +211,6 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                   border: OutlineInputBorder(),
                   filled: true,
                   fillColor: Colors.red[50],
-                  suffixIcon: IconButton(
-                    icon: Icon(Icons.attach_file),
-                    onPressed: _pickAnexos,
-                  ),
                 ),
               ),
               SizedBox(height: 16),
@@ -313,6 +218,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
               TextFormField(
                 controller: _textoSocorroController,
                 maxLines: 3,
+                maxLength: 255,
                 decoration: InputDecoration(
                   labelText: 'Texto Socorro',
                   hintText: 'Digite a mensagem de socorro aqui',
@@ -337,16 +243,6 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                 ],
               ),
               SizedBox(height: 16),
-              // Exibe os anexos selecionados (se houver)
-              _anexos.isNotEmpty
-                  ? Wrap(
-                      spacing: 8.0,
-                      children: _anexos
-                          .map((file) => Chip(label: Text(file.name)))
-                          .toList(),
-                    )
-                  : Container(),
-              SizedBox(height: 16),
               // Botões de ação
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -359,12 +255,9 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                     child: Text('Registrar'),
                   ),
                   ElevatedButton(
-                    onPressed: () {
-                      // Ação para S.O.S (pode ser similar ao envio de SMS, se desejado)
-                      print('S.O.S Enviado');
-                    },
+                    onPressed: _sendSOS,
                     style: ButtonStyle(
-                      backgroundColor: MaterialStateProperty.all(Colors.red),
+                      backgroundColor: MaterialStateProperty.all(Colors.orange),
                     ),
                     child: Text('S.O.S'),
                   ),

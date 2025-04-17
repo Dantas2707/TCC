@@ -6,6 +6,7 @@ import 'tela_configuracoes.dart';
 import 'tela_registrar_ocorrencia.dart'; 
 import 'tela_login.dart';
 import 'tela_guardiao.dart';
+import 'tela_ocorrencia.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class HomePage extends StatelessWidget {
@@ -96,7 +97,17 @@ class HomePage extends StatelessWidget {
                 );
               },
              
-              child: const Text('Realizar login'),
+             child: const Text('Tela de login'),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => OcorrenciasPage()), // Navega para minhas ocorrenciass
+                );
+              },
+              child: const Text('Minhas ocorrências'),
             ),
             const SizedBox(height: 20),
             // Botão de logout
