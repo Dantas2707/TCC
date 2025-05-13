@@ -8,6 +8,7 @@ import 'tela_login.dart';
 import 'tela_guardiao.dart';
 import 'tela_ocorrencia.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:crud/services/enviar_email.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -107,7 +108,19 @@ class HomePage extends StatelessWidget {
                   MaterialPageRoute(builder: (context) => OcorrenciasPage()), // Navega para minhas ocorrenciass
                 );
               },
-              child: const Text('Minhas ocorrências'),
+              child: const Text('Minhas ocorrências'),   
+
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => EnviarEmailPage()), // Navega para minhas ocorrenciass
+                );
+              },
+              child: const Text('Enviar emails'),
+     
             ),
             const SizedBox(height: 20),
             // Botão de logout
