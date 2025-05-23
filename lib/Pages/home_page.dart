@@ -9,6 +9,7 @@ import 'tela_guardiao.dart';
 import 'tela_ocorrencia.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:crud/services/enviar_email.dart';
+import 'package:crud/Pages/tela_config.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -130,6 +131,18 @@ class HomePage extends StatelessWidget {
               style: ElevatedButton.styleFrom(
               ),
             ),
+             const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => ConfigScreen()), // Navega para Tela da config
+                );
+              },
+              child: const Text('tela da config'),
+     
+            ),
+            
           ],
         ),
       ),

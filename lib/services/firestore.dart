@@ -19,6 +19,9 @@ class FirestoreService {
 
   final CollectionReference guardioes =
       FirebaseFirestore.instance.collection("guardiões"); // Coleção de guardiões
+  
+  final CollectionReference config =
+      FirebaseFirestore.instance.collection('config');
 
   // ==============================================================
   // FUNÇÕES PARA CONVITES DE GUARDIÃO (ABORDAGEM - Muitos para Muitos)
@@ -323,4 +326,48 @@ Future<void> finalizarOcorrencia(String ocorrenciaId) {
   });
 }
 
+// Cadastrar nova configuração
+  Future<void> cadastrarConfig(String campo, String valor, bool ativo) async {
+    // Pode incluir validações se quiser (ex: campo não vazio, valor não vazio)
+    await config.add({
+      'campo': campo.trim(),
+      'valor': valor.trim(),
+      'ativo': ativo,
+      'timestamp': Timestamp.now(),
+    });
+  }
+
+  // Buscar configuração ativa por campo
+  Future<DocumentSnapshot?> buscarConfigPorCampo(String campo) async {
+    QuerySnapshot snapshot = await config
+        .where('campo', isEqualTo: campo)
+        .where('ativo', isEqualTo: true)
+        .limit(1)
+        .get();
+
+    if (snapshot.docs.isNotEmpty) {
+      return snapshot.docs.first;
+    }
+    return null;
+  }
+
+  // Atualizar configuração pelo documentId
+  Future<void> alterarConfig(
+      String docId, String novoValor, bool ativo) async {
+    await config.doc(docId).update({
+      'valor': novoValor.trim(),
+      'ativo': ativo,
+      'timestamp': Timestamp.now(),
+    });
+  }
+
+  // Excluir configuração (remover o documento)
+  Future<void> excluirConfig(String docId) async {
+    await config.doc(docId).delete();
+  }
+
+  // Listar todas configurações ativas (stream)
+  Stream<QuerySnapshot> listarConfigsAtivas() {
+    return config.where('ativo', isEqualTo: true).snapshots();
+  }
 }
