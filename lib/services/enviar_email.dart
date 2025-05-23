@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 // Aponte para o seu servidor Dart que usa Gmail SMTP
-const String backendUrl = 'http://10.0.2.2:8080';
+const String backendUrl = 'https://backendapp-vz3r.onrender.com';
 
 Future<void> enviarEmailViaBackend({
   required String to,

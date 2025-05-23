@@ -6,47 +6,50 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_background_messenger/flutter_background_messenger.dart';
 import 'package:permission_handler/permission_handler.dart';
-
+import 'package:crud/services/enviar_email.dart';
+ 
 /// Modelo para cada guardião
 class _Guardiao {
   final String id;
   final String nome;
   final String telefone;
+  final String email;  // novo campo
   bool selecionado;
   _Guardiao({
     required this.id,
     required this.nome,
     required this.telefone,
+    required this.email,  // novo parâmetro
     this.selecionado = false,
   });
 }
-
+ 
 class OcorrenciaPage extends StatefulWidget {
   @override
   _OcorrenciaPageState createState() => _OcorrenciaPageState();
 }
-
+ 
 class _OcorrenciaPageState extends State<OcorrenciaPage> {
   final FirestoreService _service = FirestoreService();
   final _relatoCtrl = TextEditingController();
   final _textoSocorroCtrl = TextEditingController();
   final _messenger = FlutterBackgroundMessenger();
-
+ 
   String? _tipoSelecionado;
   String? _gravidadeSelecionada;
-
+ 
   List<PlatformFile> _anexos = [];
   static const int maxFileSize = 5 * 1024 * 1024;
-
+ 
   List<_Guardiao> _guardioes = [];
-
+ 
   @override
   void initState() {
     super.initState();
     _textoSocorroCtrl.text = "Atenção! Estou sob ameaça! Preciso de ajuda!";
     _loadGuardioes();
   }
-
+ 
   Future<void> _loadGuardioes() async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
     final doc = await FirebaseFirestore.instance.collection('usuario').doc(uid).get();
@@ -62,11 +65,12 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
         id: gid,
         nome: d['nome'] ?? 'Sem nome',
         telefone: d['numerotelefone'] ?? '',
+        email: d['email'] ?? '',
       ));
     }
     setState(() => _guardioes = list);
   }
-
+ 
   Future<void> _pickAnexos() async {
     final result = await FilePicker.platform.pickFiles(
       allowMultiple: true,
@@ -77,7 +81,47 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
       setState(() => _anexos.addAll(result.files));
     }
   }
-
+ 
+  Future<void> enviarEmailGuardioes() async {
+  final selecionados = _guardioes.where((g) => g.selecionado).toList();
+  if (selecionados.isEmpty) return;
+ 
+  const assunto = 'Pedido de Socorro';
+  final corpo = _textoSocorroCtrl.text.trim();
+ 
+  for (var g in selecionados) {
+    // 1) Log de depuração
+    debugPrint('🔔 Tentando enviar e-mail para: ${g.email}');
+    if (g.email.isEmpty) {
+      debugPrint('⚠️ E-mail vazio para o guardião ${g.nome}');
+      continue;
+    }
+ 
+    try {
+      await enviarEmailViaBackend(
+        to: g.email,
+        subject: assunto,
+        body: corpo,
+      );
+      debugPrint('✅ E-mail enviado com sucesso para ${g.email}');
+    } catch (e, s) {
+      // 2) Agora imprimimos o stacktrace
+      debugPrint('❌ Erro ao enviar e-mail para ${g.email}: $e');
+      debugPrint('$s');
+      // opcional: exibir um SnackBar só para esse destinatário
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha no e-mail de ${g.nome}: $e')),
+      );
+    }
+  }
+ 
+  // 3) Feedback final
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text('Tentativa de e-mail para ${selecionados.length} guardião(ões)')),
+  );
+}
+ 
+ 
   Future<void> _registrarOcorrencia() async {
     // 1) valida dropdowns
     if (_tipoSelecionado == null || _gravidadeSelecionada == null) {
@@ -86,7 +130,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
       );
       return;
     }
-
+ 
     // 2) valida texto
     final relato = _relatoCtrl.text.trim();
     final textoSocorro = _textoSocorroCtrl.text.trim();
@@ -102,7 +146,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
       );
       return;
     }
-
+ 
     // 3) grava no Firestore
     try {
       await _service.addOcorrencia(
@@ -119,11 +163,10 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
       );
       return;
     }
-
-    // 4) envia SMS apenas para guardiões selecionados
+ 
+    // 4) envia SMS para guardiões selecionados
     final selecionados = _guardioes.where((g) => g.selecionado).toList();
     if (selecionados.isNotEmpty) {
-      // checa permissão
       if (!await Permission.sms.request().isGranted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Permissão de SMS negada')),
@@ -135,28 +178,56 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
               phoneNumber: g.telefone,
               message: textoSocorro,
             );
-          } catch (_) { /* silêncio em falha individual */ }
+          } catch (_) {}
         }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('SMS enviado para ${selecionados.length} guardião(ões)')),
         );
       }
     }
-
-    // 5) limpa campos e estado
-    _relatoCtrl.clear();
-    _textoSocorroCtrl.clear();
-    setState(() {
-      _tipoSelecionado = null;
-      _gravidadeSelecionada = null;
-      _anexos.clear();
-      for (var g in _guardioes) g.selecionado = false;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Ocorrência registrada com sucesso')),
-    );
+    Future<void> enviarEmailGuardioes() async {
+  final selecionados = _guardioes.where((g) => g.selecionado).toList();
+  if (selecionados.isEmpty) return;
+ 
+  const assunto = 'Pedido de Socorro';
+  final corpo = _textoSocorroCtrl.text.trim();
+ 
+  for (var g in selecionados) {
+    // 1) Log de depuração
+    debugPrint('🔔 Tentando enviar e-mail para: ${g.email}');
+    if (g.email.isEmpty) {
+      debugPrint('⚠️ E-mail vazio para o guardião ${g.nome}');
+      continue;
+    }
+ 
+    try {
+      await enviarEmailViaBackend(
+        to: g.email,
+        subject: assunto,
+        body: corpo,
+      );
+      debugPrint('✅ E-mail enviado com sucesso para ${g.email}');
+    } catch (e, s) {
+      // 2) Agora imprimimos o stacktrace
+      debugPrint('❌ Erro ao enviar e-mail para ${g.email}: $e');
+      debugPrint('$s');
+      // opcional: exibir um SnackBar só para esse destinatário
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha no e-mail de ${g.nome}: $e')),
+      );
+    }
   }
-
+ 
+  // 3) Feedback final
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text('Tentativa de e-mail para ${selecionados.length} guardião(ões)')),
+  );
+}
+ 
+ 
+    // 4.1) envia e-mails para guardiões selecionados
+    await enviarEmailGuardioes();
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -198,7 +269,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                 },
               ),
               SizedBox(height: 16),
-
+ 
               // -- gravidade --
               StreamBuilder<QuerySnapshot>(
                 stream: _service.getgravidadeStream(),
@@ -230,7 +301,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                 },
               ),
               SizedBox(height: 16),
-
+ 
               // -- relato --
               TextFormField(
                 controller: _relatoCtrl,
@@ -244,8 +315,8 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                 ),
               ),
               SizedBox(height: 16),
-              
-
+             
+ 
               // -- texto socorro --
               TextFormField(
                 controller: _textoSocorroCtrl,
@@ -260,7 +331,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                 ),
               ),
               SizedBox(height: 16),
-
+ 
               // -- anexar mídia --
               ElevatedButton.icon(
                 onPressed: _pickAnexos,
@@ -284,7 +355,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                 ),
                 SizedBox(height: 16),
               ],
-
+ 
               // -- lista de guardiões --
               if (_guardioes.isEmpty)
                 Text('Você não possui guardiões cadastrados.')
@@ -299,7 +370,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                     )),
                 SizedBox(height: 16),
               ],
-
+ 
               // -- botões --
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,

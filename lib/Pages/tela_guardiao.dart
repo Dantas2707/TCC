@@ -88,7 +88,7 @@ class _TelaGuardiaoUnificadaState extends State<TelaGuardiaoUnificada> {
         final data = userDoc.data()! as Map<String, dynamic>;
         final List<String> ativos = List<String>.from(data['guardioes'] ?? []);
 
-        // 3.1) Gueriões ativos
+        // 3.1) Guardiões ativos
         final activeSection = ativos.isEmpty
             ? Text('Nenhum guardião ativo.')
             : ListView.builder(

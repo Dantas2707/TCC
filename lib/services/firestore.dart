@@ -21,7 +21,7 @@ class FirestoreService {
       FirebaseFirestore.instance.collection("guardiões"); // Coleção de guardiões
 
   // ==============================================================
-  // FUNÇÕES PARA CONVITES DE GUARDIÃO (ABORDAGEM 4 - Muitos para Muitos)
+  // FUNÇÕES PARA CONVITES DE GUARDIÃO (ABORDAGEM - Muitos para Muitos)
   // ==============================================================
 
   /// Envia convite para um guardião por e-mail.
