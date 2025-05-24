@@ -4,6 +4,8 @@ import 'package:crud/services/firestore.dart';
 import 'tela_login.dart';
 import 'dart:convert'; // Necessário para codificação UTF-8
 import 'package:crypto/crypto.dart'; // Pacote para gerar hash
+import 'package:crud/services/Enviar_mensagem.dart';
+import 'package:crud/services/enviar_email.dart';
 
 class TelaUsuario extends StatefulWidget {
   const TelaUsuario({Key? key}) : super(key: key);
@@ -18,7 +20,6 @@ class _TelaUsuarioState extends State<TelaUsuario> {
 
   final nomeController = TextEditingController();
   final emailController = TextEditingController();
-  final cpfController = TextEditingController();
   final telefoneController = TextEditingController();
   final dataNascController = TextEditingController();
   final senhaController = TextEditingController(); // Senha 1
@@ -26,22 +27,6 @@ class _TelaUsuarioState extends State<TelaUsuario> {
 
   String? _sexoSelecionado;
 
-  // Função para validar o CPF
-  bool validarCPF(String cpf) {
-    cpf = cpf.replaceAll(RegExp(r'[^0-9]'), '');
-    if (cpf.length != 11) return false;
-    List<int> numeros = cpf.split('').map(int.parse).toList();
-    for (int j = 9; j < 11; j++) {
-      int soma = 0;
-      for (int i = 0; i < j; i++) {
-        soma += numeros[i] * ((j + 1) - i);
-      }
-      int resto = (soma * 10) % 11;
-      if (resto == 10) resto = 0;
-      if (resto != numeros[j]) return false;
-    }
-    return true;
-  }
 
   // Função para validar o e-mail
   bool validarEmail(String email) {
@@ -100,7 +85,6 @@ class _TelaUsuarioState extends State<TelaUsuario> {
         Map<String, dynamic> dadosUsuario = {
           'nome': nomeController.text.trim(),
           'email': emailController.text.trim(),
-          'cpf': cpfController.text.trim(),
           'numerotelefone': telefoneController.text.trim(),
           'dataNasc': DateTime.parse(dataNascController.text),
           'sexo': _sexoSelecionado,
@@ -111,6 +95,23 @@ class _TelaUsuarioState extends State<TelaUsuario> {
 
         // Salva os dados no Firestore utilizando o UID do usuário
         await firestoreService.addUsuario(uid, dadosUsuario);
+
+        String? mensagemTemplate = await buscarMensagemPorCampo('mensagem_email_boas_vindas');
+
+          if (mensagemTemplate != null) {
+            String mensagemPersonalizada = preencherVariaveisMensagem(
+              mensagemTemplate,
+              {'nome': nomeController.text.trim()},
+            );
+
+            // Aqui você pode chamar seu backend para enviar o email
+            await enviarEmailViaBackend(
+              to: emailController.text.trim(),
+              subject: 'Boas-vindas ao ImTrouble!',
+              body: mensagemPersonalizada,
+            );
+          }
+
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Usuário registrado com sucesso!')),
@@ -237,15 +238,6 @@ class _TelaUsuarioState extends State<TelaUsuario> {
                   }
                   return null;
                 },
-              ),
-              // Campo CPF
-              TextFormField(
-                controller: cpfController,
-                decoration: const InputDecoration(labelText: 'CPF'),
-                keyboardType: TextInputType.number,
-                validator: (value) => value == null || !validarCPF(value)
-                    ? 'CPF inválido.'
-                    : null,
               ),
               // Campo Telefone
               TextFormField(
