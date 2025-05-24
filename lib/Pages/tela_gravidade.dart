@@ -15,54 +15,79 @@ class _GravidadeState extends State<Gravidade> {
   final TextEditingController numeroController = TextEditingController();
 
   void openAdicionarGravidadeBox() {
-    gravidadeController.clear();
-    numeroController.clear();
+  gravidadeController.clear();
+  numeroController.clear();
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Adicionar Gravidade"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: gravidadeController,
-              decoration: const InputDecoration(hintText: "Digite a gravidade"),
-            ),
-            TextField(
-              controller: numeroController,
-              decoration: const InputDecoration(hintText: "Digite o número de urgência"),
-              keyboardType: TextInputType.number,
-            ),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                await firestoreService.addgravidade(
-                  gravidadeController.text,
-                  int.parse(numeroController.text),
-                );
-                gravidadeController.clear();
-                numeroController.clear();
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Gravidade adicionada.")),
-                );
-              } catch (e) {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(e.toString())),
-                );
-              }
-            },
-            child: const Text("Adicionar"),
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text("Adicionar Gravidade"),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: gravidadeController,
+            decoration: const InputDecoration(hintText: "Digite a gravidade"),
+          ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: numeroController,
+                  decoration: const InputDecoration(hintText: "Digite o número de urgência"),
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.info_outline),
+                tooltip: "Informe um número entre 1 e 5:\n1 - Leve\n5 - Urgência máxima",
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        "Classificação de urgência:\n1 - Leve\n5 - Urgência máxima",
+                      ),
+                      duration: Duration(seconds: 3),
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
         ],
       ),
-    );
-  }
+      actions: [
+        ElevatedButton(
+          onPressed: () async {
+            try {
+              int urgencia = int.parse(numeroController.text);
+              if (urgencia < 1 || urgencia > 5) {
+                throw Exception("A urgência deve estar entre 1 e 5.");
+              }
+              await firestoreService.addgravidade(
+                gravidadeController.text,
+                urgencia,
+              );
+              gravidadeController.clear();
+              numeroController.clear();
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Gravidade adicionada.")),
+              );
+            } catch (e) {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(e.toString())),
+              );
+            }
+          },
+          child: const Text("Adicionar"),
+        ),
+      ],
+    ),
+  );
+}
 
   void openAtualizarGravidadeBox(String docID, String gravidadeAtual, int numeroAtual) {
     gravidadeController.text = gravidadeAtual;
