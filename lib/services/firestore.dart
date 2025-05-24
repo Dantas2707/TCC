@@ -170,49 +170,59 @@ class FirestoreService {
     });
   }
 
-  Future<void> addgravidade(String gravidadeText) async {
-    String gravidadeFormatado = gravidadeText.trim().toLowerCase();
-    if (gravidadeFormatado.length < 3 || gravidadeFormatado.length > 100) {
-      throw Exception("A gravidade deve ter entre 3 e 100 caracteres.");
-    }
-    QuerySnapshot duplicado = await gravidade
-        .where('gravidade', isEqualTo: gravidadeFormatado)
-        .get();
-    if (duplicado.docs.isNotEmpty) {
-      throw Exception("Esta gravidade já existe.");
-    }
-    await gravidade.add({
-      'gravidade': gravidadeFormatado,
-      'timestamp': Timestamp.now(),
-      'inativar': false,
-    });
+  Future<void> addgravidade(String gravidadeText, int numeroUrgencia) async {
+  String gravidadeFormatado = gravidadeText.trim().toLowerCase();
+
+  if (gravidadeFormatado.length < 3 || gravidadeFormatado.length > 100) {
+    throw Exception("A gravidade deve ter entre 3 e 100 caracteres.");
   }
+
+  QuerySnapshot duplicado = await gravidade
+      .where('gravidade', isEqualTo: gravidadeFormatado)
+      .get();
+
+  if (duplicado.docs.isNotEmpty) {
+    throw Exception("Esta gravidade já existe.");
+  }
+
+  await gravidade.add({
+    'gravidade': gravidadeFormatado,
+    'numeroUrgencia': numeroUrgencia,
+    'timestamp': Timestamp.now(),
+    'inativar': false,
+  });
+}
 
   Stream<QuerySnapshot> getgravidadeStream() {
-    return gravidade
-        .where('inativar', isEqualTo: false)
-        .orderBy('timestamp', descending: true)
-        .snapshots();
+  return gravidade
+      .where('inativar', isEqualTo: false)
+      .orderBy('timestamp', descending: true)
+      .snapshots();
+}
+
+  
+
+  Future<void> atualizargravidade(
+  String docID, String novagravidade, int numeroUrgencia) async {
+  String gravidadeFormatado = novagravidade.trim().toLowerCase();
+
+  if (gravidadeFormatado.length < 3 || gravidadeFormatado.length > 100) {
+    throw Exception("A gravidade deve ter no mínimo 3 e no máximo 100 caracteres.");
   }
 
-  Future<void> atualizargravidade(String docID, String novagravidade) async {
-    String gravidadeFormatado = novagravidade.trim().toLowerCase();
-    if (gravidadeFormatado.length < 3 || gravidadeFormatado.length > 100) {
-      throw Exception(
-          "A gravidade deve ter no mínimo 3 e no máximo 100 caracteres.");
-    }
-    await gravidade.doc(docID).update({
-      'gravidade': gravidadeFormatado,
-      'timestamp': Timestamp.now(),
-    });
-  }
+  await gravidade.doc(docID).update({
+    'gravidade': gravidadeFormatado,
+    'numeroUrgencia': numeroUrgencia,
+    'timestamp': Timestamp.now(),
+  });
+}
 
-  Future<void> inativargravidade(String docID) {
-    return gravidade.doc(docID).update({
-      'timestamp': Timestamp.now(),
-      'inativar': true,
-    });
-  }
+  Future<void> inativargravidade(String docID) async {
+  await gravidade.doc(docID).update({
+    'inativar': true,
+    'timestamp': Timestamp.now(),
+  });
+}
 
   Future<void> addUsuario(String uid, Map<String, dynamic> dadosUsuario) async {
     await usuario.doc(uid).set({

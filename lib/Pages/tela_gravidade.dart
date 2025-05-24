@@ -11,28 +11,41 @@ class Gravidade extends StatefulWidget {
 
 class _GravidadeState extends State<Gravidade> {
   final FirestoreService firestoreService = FirestoreService();
-  final TextEditingController textController = TextEditingController();
+  final TextEditingController gravidadeController = TextEditingController();
+  final TextEditingController numeroController = TextEditingController();
 
-  // Método para abrir o diálogo e adicionar gravidade
   void openAdicionarGravidadeBox() {
-    textController.clear();
+    gravidadeController.clear();
+    numeroController.clear();
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Adicionar Gravidade"),
-        content: TextField(
-          controller: textController,
-          decoration: const InputDecoration(
-            hintText: "Digite a gravidade",
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: gravidadeController,
+              decoration: const InputDecoration(hintText: "Digite a gravidade"),
+            ),
+            TextField(
+              controller: numeroController,
+              decoration: const InputDecoration(hintText: "Digite o número de urgência"),
+              keyboardType: TextInputType.number,
+            ),
+          ],
         ),
         actions: [
           ElevatedButton(
             onPressed: () async {
               try {
-                await firestoreService.addgravidade(textController.text);
-                textController.clear();
+                await firestoreService.addgravidade(
+                  gravidadeController.text,
+                  int.parse(numeroController.text),
+                );
+                gravidadeController.clear();
+                numeroController.clear();
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text("Gravidade adicionada.")),
@@ -51,26 +64,39 @@ class _GravidadeState extends State<Gravidade> {
     );
   }
 
-  // Método para abrir o diálogo e atualizar gravidade
-  void openAtualizarGravidadeBox(String docID, String gravidadeAtual) {
-    textController.text = gravidadeAtual;
+  void openAtualizarGravidadeBox(String docID, String gravidadeAtual, int numeroAtual) {
+    gravidadeController.text = gravidadeAtual;
+    numeroController.text = numeroAtual.toString();
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Atualizar Gravidade"),
-        content: TextField(
-          controller: textController,
-          decoration: const InputDecoration(
-            hintText: "Atualize a gravidade",
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: gravidadeController,
+              decoration: const InputDecoration(hintText: "Atualize a gravidade"),
+            ),
+            TextField(
+              controller: numeroController,
+              decoration: const InputDecoration(hintText: "Atualize o número de urgência"),
+              keyboardType: TextInputType.number,
+            ),
+          ],
         ),
         actions: [
           ElevatedButton(
             onPressed: () async {
               try {
-                await firestoreService.atualizargravidade(docID, textController.text);
-                textController.clear();
+                await firestoreService.atualizargravidade(
+                  docID,
+                  gravidadeController.text,
+                  int.parse(numeroController.text),
+                );
+                gravidadeController.clear();
+                numeroController.clear();
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text("Gravidade atualizada.")),
@@ -110,18 +136,17 @@ class _GravidadeState extends State<Gravidade> {
 
                 Map<String, dynamic> data = document.data() as Map<String, dynamic>;
                 String gravidadeText = data['gravidade'];
+                int numeroUrgencia = data['numeroUrgencia'] ?? 0;
 
                 return ListTile(
-                  title: Text(gravidadeText),
+                  title: Text("$gravidadeText - Urgência: $numeroUrgencia"),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Atualizar (Editar)
                       IconButton(
                         icon: const Icon(Icons.edit),
-                        onPressed: () => openAtualizarGravidadeBox(docID, gravidadeText),
+                        onPressed: () => openAtualizarGravidadeBox(docID, gravidadeText, numeroUrgencia),
                       ),
-                      // Inativar (Excluir)
                       IconButton(
                         icon: const Icon(Icons.delete),
                         onPressed: () {
