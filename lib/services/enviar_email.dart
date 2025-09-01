@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 // Aponte para o seu servidor Dart que usa Gmail SMTP
-const String backendUrl = 'https://backendapp-vz3r.onrender.com';
+const String backendUrl = 'https://backendapp-novo.onrender.com';
 
+// Função para enviar e-mail via backend
 Future<void> enviarEmailViaBackend({
   required String to,
   required String subject,
@@ -20,10 +22,35 @@ Future<void> enviarEmailViaBackend({
   }
 }
 
+class FirestoreService {
+  final CollectionReference textosEmails =
+      FirebaseFirestore.instance.collection('textosEmails');
+
+  // Função para listar os textos de e-mails ativos
+  Stream<QuerySnapshot> listarTextosEmailsAtivos() {
+    return textosEmails.where('inativar', isEqualTo: false).snapshots();
+  }
+
+  // Função para buscar um texto de e-mail pelo nome
+  Future<DocumentSnapshot?> buscarTextoEmail(String nome) async {
+    QuerySnapshot snapshot = await textosEmails
+        .where('nome', isEqualTo: nome)
+        .where('inativar', isEqualTo: false)
+        .limit(1)
+        .get();
+
+    if (snapshot.docs.isNotEmpty) {
+      return snapshot.docs.first;
+    }
+    return null;
+  }
+}
+
 void main() => runApp(const MyApp());
 
 class MyApp extends StatelessWidget {
   const MyApp({Key? key}) : super(key: key);
+
   @override
   Widget build(BuildContext context) => MaterialApp(
         title: 'Envio de E-mail',
@@ -33,28 +60,60 @@ class MyApp extends StatelessWidget {
 
 class EnviarEmailPage extends StatefulWidget {
   const EnviarEmailPage({Key? key}) : super(key: key);
+
   @override
   _EnviarEmailPageState createState() => _EnviarEmailPageState();
 }
 
 class _EnviarEmailPageState extends State<EnviarEmailPage> {
-  final _toCtrl    = TextEditingController();
-  final _subjCtrl  = TextEditingController();
-  final _bodyCtrl  = TextEditingController();
-  bool  _sending   = false;
+  final FirestoreService firestoreService =
+      FirestoreService(); // Instância do FirestoreService
+  final _toCtrl = TextEditingController();
+  final _subjCtrl = TextEditingController();
+  final _bodyCtrl = TextEditingController();
+  bool _sending = false;
+
+  String? _selectedTextoEmail; // Texto de e-mail selecionado
+  List<String> _textosEmailList =
+      []; // Lista para armazenar os nomes dos textos
 
   @override
-  void dispose() {
-    _toCtrl.dispose();
-    _subjCtrl.dispose();
-    _bodyCtrl.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _listarTextosEmailAtivos();
   }
 
+  // Função para listar os textos de e-mails ativos
+  Future<void> _listarTextosEmailAtivos() async {
+    firestoreService.listarTextosEmailsAtivos().listen((snapshot) {
+      List<String> textos = [];
+      for (var doc in snapshot.docs) {
+        textos.add(doc['nome']); // Adiciona o nome do texto à lista
+      }
+      setState(() {
+        _textosEmailList = textos;
+      });
+    });
+  }
+
+  // Função para preencher o e-mail selecionado
+  Future<void> _preencherEmail(String nomeTextoEmail) async {
+    var textoDoc = await firestoreService.buscarTextoEmail(nomeTextoEmail);
+
+    if (textoDoc != null) {
+      _subjCtrl.text =
+          textoDoc['nome']; // Preenche o assunto com o nome do e-mail
+      _bodyCtrl.text =
+          textoDoc['textoEmail']; // Preenche o corpo com o conteúdo do e-mail
+    }
+  }
+
+  // Função para enviar o e-mail
   Future<void> _onEnviar() async {
-    final to      = _toCtrl.text.trim();
+    final to = _toCtrl.text.trim();
     final subject = _subjCtrl.text.trim();
-    final body    = _bodyCtrl.text.trim();
+    final body = _bodyCtrl.text.trim();
+
     if (to.isEmpty || subject.isEmpty || body.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Preencha todos os campos')),
@@ -88,24 +147,50 @@ class _EnviarEmailPageState extends State<EnviarEmailPage> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
+            // Combo Box para selecionar o texto de e-mail
+            DropdownButton<String>(
+              hint: const Text('Selecione o texto de e-mail'),
+              value: _selectedTextoEmail,
+              onChanged: (newValue) {
+                setState(() {
+                  _selectedTextoEmail = newValue;
+                });
+                // Preenche o assunto e o corpo do e-mail quando selecionado
+                _preencherEmail(newValue!);
+              },
+              items: _textosEmailList
+                  .map<DropdownMenuItem<String>>((String value) {
+                return DropdownMenuItem<String>(
+                  value: value,
+                  child: Text(value),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 12),
             TextField(
               controller: _toCtrl,
               decoration: const InputDecoration(
-                labelText: 'Para', border: OutlineInputBorder()),
+                labelText: 'Para',
+                border: OutlineInputBorder(),
+              ),
               keyboardType: TextInputType.emailAddress,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _subjCtrl,
               decoration: const InputDecoration(
-                labelText: 'Assunto', border: OutlineInputBorder()),
+                labelText: 'Assunto',
+                border: OutlineInputBorder(),
+              ),
             ),
             const SizedBox(height: 12),
             Expanded(
               child: TextField(
                 controller: _bodyCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'Corpo da mensagem', border: OutlineInputBorder()),
+                  labelText: 'Corpo da mensagem',
+                  border: OutlineInputBorder(),
+                ),
                 maxLines: null,
                 expands: true,
               ),
@@ -117,9 +202,10 @@ class _EnviarEmailPageState extends State<EnviarEmailPage> {
                 onPressed: _sending ? null : _onEnviar,
                 child: _sending
                     ? const SizedBox(
-                        width: 20, height: 20,
+                        width: 20,
+                        height: 20,
                         child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
+                            strokeWidth: 2, color: Colors.white),
                       )
                     : const Text('Enviar E-mail'),
               ),

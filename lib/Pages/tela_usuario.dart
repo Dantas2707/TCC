@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:crud/services/firestore.dart';
+import 'package:crud/services/firestore.dart'
+    as fsFirestore; // FirestoreService de firestore.dart
 import 'tela_login.dart';
 import 'dart:convert'; // Necessário para codificação UTF-8
 import 'package:crypto/crypto.dart'; // Pacote para gerar hash
 import 'package:crud/services/Enviar_mensagem.dart';
-import 'package:crud/services/enviar_email.dart';
+import 'package:crud/services/enviar_email.dart'
+    as fsEnviarEmail; // Função de envio de e-mail
+import 'tela_textoEmails.dart';
 
 class TelaUsuario extends StatefulWidget {
   const TelaUsuario({Key? key}) : super(key: key);
@@ -15,7 +18,8 @@ class TelaUsuario extends StatefulWidget {
 }
 
 class _TelaUsuarioState extends State<TelaUsuario> {
-  final FirestoreService firestoreService = FirestoreService();
+  final fsFirestore.FirestoreService firestoreService =
+      fsFirestore.FirestoreService();
   final _formKey = GlobalKey<FormState>();
 
   final nomeController = TextEditingController();
@@ -26,7 +30,6 @@ class _TelaUsuarioState extends State<TelaUsuario> {
   final senhaConfirmController = TextEditingController(); // Senha 2
 
   String? _sexoSelecionado;
-
 
   // Função para validar o e-mail
   bool validarEmail(String email) {
@@ -57,6 +60,7 @@ class _TelaUsuarioState extends State<TelaUsuario> {
     }
   }
 
+  // Função para registrar usuário
   Future<void> registrarUsuario() async {
     if (_formKey.currentState!.validate()) {
       if (senhaController.text != senhaConfirmController.text) {
@@ -71,8 +75,8 @@ class _TelaUsuarioState extends State<TelaUsuario> {
         String hashSenha = gerarHashSenha(senhaController.text.trim());
 
         // Cria o usuário no Firebase Authentication
-        UserCredential authResult = await FirebaseAuth.instance
-            .createUserWithEmailAndPassword(
+        UserCredential authResult =
+            await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: emailController.text.trim(),
           password: senhaController.text.trim(),
         );
@@ -96,22 +100,28 @@ class _TelaUsuarioState extends State<TelaUsuario> {
         // Salva os dados no Firestore utilizando o UID do usuário
         await firestoreService.addUsuario(uid, dadosUsuario);
 
-        String? mensagemTemplate = await buscarMensagemPorCampo('mensagem_email_boas_vindas');
+        // ----------------------------
+        // ENVIO DE EMAIL DE BOAS-VINDAS
+        // ----------------------------
+        // Prepara os valores do usuário que vão substituir os placeholders
+        Map<String, String> valoresUsuario = {
+          'nome': nomeController.text.trim(),
+          'email': emailController.text.trim(),
+          // você pode adicionar mais campos, ex: 'telefone': telefoneController.text.trim()
+        };
 
-          if (mensagemTemplate != null) {
-            String mensagemPersonalizada = preencherVariaveisMensagem(
-              mensagemTemplate,
-              {'nome': nomeController.text.trim()},
-            );
+        // Chamada da função do FirestoreService que gera o e-mail final
+        String mensagemFinal = await firestoreService.gerarEmailPersonalizado(
+          templateNome: 'mensagem_email_boas_vindas',
+          valoresUsuario: valoresUsuario,
+        );
 
-            // Aqui você pode chamar seu backend para enviar o email
-            await enviarEmailViaBackend(
-              to: emailController.text.trim(),
-              subject: 'Boas-vindas ao ImTrouble!',
-              body: mensagemPersonalizada,
-            );
-          }
-
+        // Envia o e-mail pelo backend
+        await fsEnviarEmail.enviarEmailViaBackend(
+          to: emailController.text.trim(),
+          subject: 'Boas-vindas ao ImTrouble!',
+          body: mensagemFinal,
+        );
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Usuário registrado com sucesso!')),
@@ -128,13 +138,12 @@ class _TelaUsuarioState extends State<TelaUsuario> {
             actions: [
               TextButton(
                 onPressed: () async {
-                  // Atualiza os dados do usuário para verificar a propriedade emailVerified
                   await FirebaseAuth.instance.currentUser?.reload();
-                  if (FirebaseAuth.instance.currentUser?.emailVerified ?? false) {
+                  if (FirebaseAuth.instance.currentUser?.emailVerified ??
+                      false) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                          content:
-                              Text('Email verificado. Faça login agora.')),
+                          content: Text('Email verificado. Faça login agora.')),
                     );
                     Navigator.pushReplacement(
                       context,
@@ -154,6 +163,7 @@ class _TelaUsuarioState extends State<TelaUsuario> {
           ),
         );
 
+        // Limpar formulários
         _formKey.currentState!.reset();
         setState(() {
           _sexoSelecionado = null;
@@ -209,7 +219,7 @@ class _TelaUsuarioState extends State<TelaUsuario> {
                     ? 'E-mail inválido.'
                     : null,
               ),
-              // Campo de Senha
+              // Campo Senha
               TextFormField(
                 controller: senhaController,
                 decoration: const InputDecoration(labelText: 'Senha'),
@@ -224,7 +234,7 @@ class _TelaUsuarioState extends State<TelaUsuario> {
                   return null;
                 },
               ),
-              // Campo Confirmar Senha
+              // Confirmar Senha
               TextFormField(
                 controller: senhaConfirmController,
                 decoration: const InputDecoration(labelText: 'Confirmar Senha'),
@@ -239,37 +249,34 @@ class _TelaUsuarioState extends State<TelaUsuario> {
                   return null;
                 },
               ),
-              // Campo Telefone
+              // Telefone
               TextFormField(
                 controller: telefoneController,
                 decoration: const InputDecoration(labelText: 'Telefone'),
                 keyboardType: TextInputType.phone,
-                validator: (value) => value == null ||
-                        value.length < 8 ||
-                        value.length > 20
-                    ? 'Telefone deve ter entre 8 e 20 caracteres.'
-                    : null,
+                validator: (value) =>
+                    value == null || value.length < 8 || value.length > 20
+                        ? 'Telefone deve ter entre 8 e 20 caracteres.'
+                        : null,
               ),
-              // Campo Data de Nascimento
+              // Data de Nascimento
               TextFormField(
                 controller: dataNascController,
-                decoration:
-                    const InputDecoration(labelText: 'Data Nascimento'),
+                decoration: const InputDecoration(labelText: 'Data Nascimento'),
                 readOnly: true,
                 onTap: () => selecionarDataNascimento(context),
                 validator: (value) => value == null || value.isEmpty
                     ? 'Selecione uma data válida.'
                     : null,
               ),
-              // Dropdown para Sexo
+              // Sexo
               DropdownButtonFormField<String>(
                 value: _sexoSelecionado,
                 decoration: const InputDecoration(labelText: 'Sexo'),
                 items: const [
                   DropdownMenuItem(
                       value: 'Masculino', child: Text('Masculino')),
-                  DropdownMenuItem(
-                      value: 'Feminino', child: Text('Feminino')),
+                  DropdownMenuItem(value: 'Feminino', child: Text('Feminino')),
                 ],
                 onChanged: (valor) {
                   setState(() {

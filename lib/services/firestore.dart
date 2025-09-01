@@ -4,7 +4,6 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
 
 class FirestoreService {
-
   final CollectionReference tipoOcorrencia =
       FirebaseFirestore.instance.collection('tipoOcorrencia');
 
@@ -14,14 +13,20 @@ class FirestoreService {
   final CollectionReference gravidade =
       FirebaseFirestore.instance.collection('gravidade');
 
-  final CollectionReference ocorrencias =
-      FirebaseFirestore.instance.collection('ocorrencias'); // Coleção para as ocorrências
+  final CollectionReference ocorrencias = FirebaseFirestore.instance
+      .collection('ocorrencias'); // Coleção para as ocorrências
 
-  final CollectionReference guardioes =
-      FirebaseFirestore.instance.collection("guardiões"); // Coleção de guardiões
-  
+  final CollectionReference guardioes = FirebaseFirestore.instance
+      .collection("guardiões"); // Coleção de guardiões
+
   final CollectionReference config =
       FirebaseFirestore.instance.collection('config');
+
+  final CollectionReference textosEmails =
+      FirebaseFirestore.instance.collection('textosEmails');
+
+  final CollectionReference tags =
+      FirebaseFirestore.instance.collection('tags');
 
   // ==============================================================
   // FUNÇÕES PARA CONVITES DE GUARDIÃO (ABORDAGEM - Muitos para Muitos)
@@ -178,9 +183,8 @@ class FirestoreService {
     if (gravidadeFormatado.length < 3 || gravidadeFormatado.length > 100) {
       throw Exception("A gravidade deve ter entre 3 e 100 caracteres.");
     }
-    QuerySnapshot duplicado = await gravidade
-        .where('gravidade', isEqualTo: gravidadeFormatado)
-        .get();
+    QuerySnapshot duplicado =
+        await gravidade.where('gravidade', isEqualTo: gravidadeFormatado).get();
     if (duplicado.docs.isNotEmpty) {
       throw Exception("Esta gravidade já existe.");
     }
@@ -254,40 +258,39 @@ class FirestoreService {
   // MÉTODO DE ADIÇÃO DE OCORRÊNCIA COM UPLOAD DE ANEXOS
   // ==================================================================
   Future<void> addOcorrencia(
-  String tipoOcorrencia,
-  String gravidade,
-  String relato,
-  String textoSocorro,
-  bool enviarParaGuardiao, {
-  List<PlatformFile>? anexos,
-}) async {
-  List<String> anexosUrls = [];
+    String tipoOcorrencia,
+    String gravidade,
+    String relato,
+    String textoSocorro,
+    bool enviarParaGuardiao, {
+    List<PlatformFile>? anexos,
+  }) async {
+    List<String> anexosUrls = [];
 
-  // Se houver anexos, faz o upload de cada arquivo para o Firebase Storage.
-  if (anexos != null && anexos.isNotEmpty) {
-    for (var file in anexos) {
-      try {
-        String url = await uploadFile(file);
-        anexosUrls.add(url);
-      } catch (e) {
-        print('Erro ao fazer upload do anexo ${file.name}: $e');
+    // Se houver anexos, faz o upload de cada arquivo para o Firebase Storage.
+    if (anexos != null && anexos.isNotEmpty) {
+      for (var file in anexos) {
+        try {
+          String url = await uploadFile(file);
+          anexosUrls.add(url);
+        } catch (e) {
+          print('Erro ao fazer upload do anexo ${file.name}: $e');
+        }
       }
     }
+
+    // Salva a ocorrência no Firestore, incluindo o campo de status "aberto"
+    await ocorrencias.add({
+      'tipoOcorrencia': tipoOcorrencia,
+      'gravidade': gravidade,
+      'relato': relato,
+      'textoSocorro': textoSocorro,
+      'enviarParaGuardiao': enviarParaGuardiao,
+      'status': 'aberto', // Status inicial da ocorrência
+      'anexos': anexosUrls,
+      'timestamp': Timestamp.now(),
+    });
   }
-
-  // Salva a ocorrência no Firestore, incluindo o campo de status "aberto"
-  await ocorrencias.add({
-    'tipoOcorrencia': tipoOcorrencia,
-    'gravidade': gravidade,
-    'relato': relato,
-    'textoSocorro': textoSocorro,
-    'enviarParaGuardiao': enviarParaGuardiao,
-    'status': 'aberto',  // Status inicial da ocorrência
-    'anexos': anexosUrls,
-    'timestamp': Timestamp.now(),
-  });
-}
-
 
   Stream<QuerySnapshot> getOcorrenciasStream() {
     return ocorrencias.orderBy('timestamp', descending: true).snapshots();
@@ -299,8 +302,8 @@ class FirestoreService {
   Future<String> uploadFile(PlatformFile file) async {
     // Cria uma referência única para o arquivo usando timestamp e nome
     final storageRef = FirebaseStorage.instance.ref().child(
-      'ocorrencias/${DateTime.now().millisecondsSinceEpoch}_${file.name}',
-    );
+          'ocorrencias/${DateTime.now().millisecondsSinceEpoch}_${file.name}',
+        );
     UploadTask uploadTask;
 
     // Se o arquivo possuir path (mobile), faz o upload com putFile
@@ -319,12 +322,173 @@ class FirestoreService {
   }
 
   // FINALIZAR OCORRENCIA
-Future<void> finalizarOcorrencia(String ocorrenciaId) {
-  return ocorrencias.doc(ocorrenciaId).update({
-    'status': 'finalizado',
-    'timestamp': Timestamp.now(),
-  });
-}
+  Future<void> finalizarOcorrencia(String ocorrenciaId) {
+    return ocorrencias.doc(ocorrenciaId).update({
+      'status': 'finalizado',
+      'timestamp': Timestamp.now(),
+    });
+  }
+
+  // cadastrar textos dos emails
+  Future<void> cadastrartextoEmail(
+      String nome, String textoEmail, bool inativar) async {
+    await textosEmails.add({
+      'nome': nome.trim(),
+      'textoEmail': textoEmail.trim(),
+      'inativar': inativar,
+      'timestamp': Timestamp.now(),
+    });
+  }
+
+  // Buscar textos dos emails pelo nome
+  Future<DocumentSnapshot?> buscartextoemail(String campo) async {
+    QuerySnapshot snapshot = await config
+        .where('nome', isEqualTo: campo)
+        .where('inativar', isEqualTo: false)
+        .limit(1)
+        .get();
+
+    if (snapshot.docs.isNotEmpty) {
+      return snapshot.docs.first;
+    }
+    return null;
+  }
+
+// Atualizar configuração pelo documentId
+  Future<void> alterartextoemail(String docId, String novoNome,
+      String novotextoEmail, bool inativar) async {
+    await textosEmails.doc(docId).update({
+      'valor': novoNome.trim(),
+      'inativar': inativar,
+      'timestamp': Timestamp.now(),
+    });
+  }
+
+  // Excluir textos dos emails do banco de dados (remover o documento)
+  Future<void> excluirtextosEmails(String docId) async {
+    await textosEmails.doc(docId).delete();
+  }
+
+  // Listar todas configurações ativas (stream)
+  Stream<QuerySnapshot> listartextoemailAtivo() {
+    return textosEmails.where('inativar', isEqualTo: true).snapshots();
+  }
+
+  // funçao para buscar a mensagem de email pelo nome
+  Future<String?> buscarTextoEmailPorNome(String nomeEmail) async {
+    try {
+      QuerySnapshot snapshot = await textosEmails
+          .where('nome', isEqualTo: nomeEmail)
+          .where('inativar', isEqualTo: false)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        return snapshot.docs.first['textoEmail'];
+      }
+      return null;
+    } catch (e) {
+      print("Erro ao buscar texto de e-mail: $e");
+      return null;
+    }
+  }
+
+  // 🔹 Nova função: envia e-mail personalizado
+  Future<String> gerarEmailPersonalizado({
+    required String templateNome,
+    required Map<String, String> valoresUsuario,
+  }) async {
+    // 1. Buscar template
+    String? template = await buscarTextoEmailPorNome(templateNome);
+    if (template == null) return '';
+
+    // 2. Buscar tags ativas
+    Map<String, String> tags = await buscarTags();
+
+    // 3. Combina tags + valores do usuário
+    final Map<String, String> mapaFinal = {...tags, ...valoresUsuario};
+
+    // 4. Monta mensagem final
+    return preencherTags(template, mapaFinal);
+  }
+
+
+// Cadastrar nova tag
+  Future<void> cadastrarTag(String nome, String valor, bool inativar) async {
+    await tags.add({
+      'nome': nome.trim(),
+      'valor': valor.trim(),
+      'inativar': inativar,
+      'timestamp': Timestamp.now(),
+    });
+  }
+
+// Buscar tag pelo nome
+  Future<DocumentSnapshot?> buscarTag(String nomeTag) async {
+    QuerySnapshot snapshot = await tags
+        .where('nome', isEqualTo: nomeTag)
+        .where('inativar', isEqualTo: false)
+        .limit(1)
+        .get();
+
+    if (snapshot.docs.isNotEmpty) {
+      return snapshot.docs.first;
+    }
+    return null;
+  }
+
+// Alterar tag pelo documentId
+  Future<void> alterarTag(
+      String docId, String novoNome, String novoValor, bool inativar) async {
+    await tags.doc(docId).update({
+      'nome': novoNome.trim(),
+      'valor': novoValor.trim(),
+      'inativar': inativar,
+      'timestamp': Timestamp.now(),
+    });
+  }
+
+// Inativar/ativar tag
+  Future<void> toggleAtivoTag(String docId, bool ativo) async {
+    // Passar exatamente o valor que você quer no campo 'inativar'
+    await tags.doc(docId).update({
+      'inativar': ativo, // não inverter aqui
+      'timestamp': Timestamp.now(),
+    });
+  }
+
+// Excluir tag (remover documento)
+  Future<void> excluirTag(String docId) async {
+    await tags.doc(docId).delete();
+  }
+
+// Listar todas as tags (ativas e inativas)
+  Stream<QuerySnapshot> listarTodasTags() {
+    return tags.orderBy('timestamp', descending: true).snapshots();
+  }
+
+// Buscar todas as tags ativas
+  Future<Map<String, String>> buscarTags() async {
+    final snapshot = await tags.where('ativo', isEqualTo: true).get();
+
+    Map<String, String> tagsMap = {};
+    for (var doc in snapshot.docs) {
+      tagsMap[doc['nome']] = doc['valor'];
+    }
+    return tagsMap;
+  }
+
+
+  
+  // Monta a mensagem final substituindo placeholders pelas tags + valores reais
+  String preencherTags(String template, Map<String, String> variaveisUsuario) {
+    String mensagem = template;
+    final futureTags = variaveisUsuario;
+    futureTags.forEach((key, value) {
+      mensagem = mensagem.replaceAll('{$key}', value);
+    });
+    return mensagem;
+  }
 
 // Cadastrar nova configuração
   Future<void> cadastrarConfig(String campo, String valor, bool ativo) async {
@@ -352,8 +516,7 @@ Future<void> finalizarOcorrencia(String ocorrenciaId) {
   }
 
   // Atualizar configuração pelo documentId
-  Future<void> alterarConfig(
-      String docId, String novoValor, bool ativo) async {
+  Future<void> alterarConfig(String docId, String novoValor, bool ativo) async {
     await config.doc(docId).update({
       'valor': novoValor.trim(),
       'ativo': ativo,

@@ -31,7 +31,7 @@ flutter pub add cloud_firestore
 Adiciona o pacote do Firestore (banco de dados em tempo real) ao projeto.
 
 >> Dependências e diagnóstico
-
+"
 flutter pub get  
 Baixa e instala todos os pacotes listados no pubspec.yaml.
 
