@@ -6,8 +6,7 @@ import 'tela_login.dart';
 import 'dart:convert'; // Necessário para codificação UTF-8
 import 'package:crypto/crypto.dart'; // Pacote para gerar hash
 import 'package:crud/services/Enviar_mensagem.dart';
-import 'package:crud/services/enviar_email.dart'
-    as fsEnviarEmail; // Função de envio de e-mail
+import 'package:crud/services/enviar_email.dart'; // Função de envio de e-mail
 import 'tela_textoEmails.dart';
 
 class TelaUsuario extends StatefulWidget {
@@ -59,6 +58,8 @@ class _TelaUsuarioState extends State<TelaUsuario> {
       });
     }
   }
+
+  final EmailBackendService _emailService = EmailBackendService();
 
   // Função para registrar usuário
   Future<void> registrarUsuario() async {
@@ -117,7 +118,7 @@ class _TelaUsuarioState extends State<TelaUsuario> {
         );
 
         // Envia o e-mail pelo backend
-        await fsEnviarEmail.enviarEmailViaBackend(
+        await _emailService.enviarEmailViaBackend(
           to: emailController.text.trim(),
           subject: 'Boas-vindas ao ImTrouble!',
           body: mensagemFinal,

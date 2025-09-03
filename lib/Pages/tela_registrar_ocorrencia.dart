@@ -6,7 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_background_messenger/flutter_background_messenger.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:crud/services/enviar_email.dart' as fsEnviarEmail; // Prefixo fsEnviarEmail
+import 'package:crud/services/enviar_email.dart'; // Prefixo fsEnviarEmail
 
 /// Modelo para cada guardião
 class _Guardiao {
@@ -83,6 +83,8 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
     }
   }
 
+  // instância única do service
+  final EmailBackendService _emailService = EmailBackendService();
   // Função para enviar e-mail para os guardiões
   Future<void> enviarEmailGuardioes() async {
     final selecionados = _guardioes.where((g) => g.selecionado).toList();
@@ -100,7 +102,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
       }
 
       try {
-        await fsEnviarEmail.enviarEmailViaBackend( // Usando o prefixo fsEnviarEmail
+         await _emailService.enviarEmailViaBackend( // Usando o prefixo fsEnviarEmail
           to: g.email,
           subject: assunto,
           body: corpo,

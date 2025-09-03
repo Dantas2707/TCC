@@ -1,24 +1,29 @@
+// lib/services/email_service.dart
 import 'dart:convert';
-import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-// Aponte para o seu servidor Dart que usa Gmail SMTP
-const String backendUrl = 'https://backendapp-novo.onrender.com';
+class EmailBackendService {
+  EmailBackendService(
+      {this.backendUrl = 'https://enviar-email-3jwi.onrender.com'});
 
-// Função para enviar e-mail via backend
-Future<void> enviarEmailViaBackend({
-  required String to,
-  required String subject,
-  required String body,
-}) async {
-  final resp = await http.post(
-    Uri.parse(backendUrl),
-    headers: {'Content-Type': 'application/json'},
-    body: jsonEncode({'to': to, 'subject': subject, 'body': body}),
-  );
-  if (resp.statusCode != 200) {
-    throw Exception('Falha ao enviar: ${resp.body}');
+  final String backendUrl;
+
+  /// Envia e-mail via backend HTTP.
+  Future<void> enviarEmailViaBackend({
+    required String to,
+    required String subject,
+    required String body,
+  }) async {
+    final resp = await http.post(
+      Uri.parse(backendUrl),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'to': to, 'subject': subject, 'body': body}),
+    );
+
+    if (resp.statusCode != 200) {
+      throw Exception('Falha ao enviar: ${resp.body}');
+    }
   }
 }
 
@@ -26,193 +31,36 @@ class FirestoreService {
   final CollectionReference textosEmails =
       FirebaseFirestore.instance.collection('textosEmails');
 
-  // Função para listar os textos de e-mails ativos
-  Stream<QuerySnapshot> listarTextosEmailsAtivos() {
-    return textosEmails.where('inativar', isEqualTo: false).snapshots();
+  /// Stream com os textos de e-mail ativos (para usar com StreamBuilder)
+  Stream<QuerySnapshot<Map<String, dynamic>>> listarTextosEmailsAtivos() {
+    return textosEmails
+        .where('inativar', isEqualTo: false)
+        .withConverter<Map<String, dynamic>>(
+          fromFirestore: (snap, _) => snap.data() as Map<String, dynamic>,
+          toFirestore: (data, _) => data,
+        )
+        .snapshots();
   }
 
-  // Função para buscar um texto de e-mail pelo nome
-  Future<DocumentSnapshot?> buscarTextoEmail(String nome) async {
-    QuerySnapshot snapshot = await textosEmails
+  /// Busca um documento de texto de e-mail por nome (se ativo)
+  Future<Map<String, dynamic>?> buscarTextoEmail(String nome) async {
+    final snapshot = await textosEmails
         .where('nome', isEqualTo: nome)
         .where('inativar', isEqualTo: false)
         .limit(1)
         .get();
 
-    if (snapshot.docs.isNotEmpty) {
-      return snapshot.docs.first;
-    }
-    return null;
-  }
-}
-
-void main() => runApp(const MyApp());
-
-class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) => MaterialApp(
-        title: 'Envio de E-mail',
-        home: const EnviarEmailPage(),
-      );
-}
-
-class EnviarEmailPage extends StatefulWidget {
-  const EnviarEmailPage({Key? key}) : super(key: key);
-
-  @override
-  _EnviarEmailPageState createState() => _EnviarEmailPageState();
-}
-
-class _EnviarEmailPageState extends State<EnviarEmailPage> {
-  final FirestoreService firestoreService =
-      FirestoreService(); // Instância do FirestoreService
-  final _toCtrl = TextEditingController();
-  final _subjCtrl = TextEditingController();
-  final _bodyCtrl = TextEditingController();
-  bool _sending = false;
-
-  String? _selectedTextoEmail; // Texto de e-mail selecionado
-  List<String> _textosEmailList =
-      []; // Lista para armazenar os nomes dos textos
-
-  @override
-  void initState() {
-    super.initState();
-    _listarTextosEmailAtivos();
+    if (snapshot.docs.isEmpty) return null;
+    return snapshot.docs.first.data() as Map<String, dynamic>;
   }
 
-  // Função para listar os textos de e-mails ativos
-  Future<void> _listarTextosEmailAtivos() async {
-    firestoreService.listarTextosEmailsAtivos().listen((snapshot) {
-      List<String> textos = [];
-      for (var doc in snapshot.docs) {
-        textos.add(doc['nome']); // Adiciona o nome do texto à lista
-      }
-      setState(() {
-        _textosEmailList = textos;
-      });
-    });
-  }
+  /// 🔹 Novo: Lista apenas os nomes dos textos ativos (útil para Dropdown)
+  Future<List<String>> listarNomesTextosEmails() async {
+    final query = await textosEmails.where('inativar', isEqualTo: false).get();
 
-  // Função para preencher o e-mail selecionado
-  Future<void> _preencherEmail(String nomeTextoEmail) async {
-    var textoDoc = await firestoreService.buscarTextoEmail(nomeTextoEmail);
-
-    if (textoDoc != null) {
-      _subjCtrl.text =
-          textoDoc['nome']; // Preenche o assunto com o nome do e-mail
-      _bodyCtrl.text =
-          textoDoc['textoEmail']; // Preenche o corpo com o conteúdo do e-mail
-    }
-  }
-
-  // Função para enviar o e-mail
-  Future<void> _onEnviar() async {
-    final to = _toCtrl.text.trim();
-    final subject = _subjCtrl.text.trim();
-    final body = _bodyCtrl.text.trim();
-
-    if (to.isEmpty || subject.isEmpty || body.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Preencha todos os campos')),
-      );
-      return;
-    }
-
-    setState(() => _sending = true);
-    try {
-      await enviarEmailViaBackend(to: to, subject: subject, body: body);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('E-mail enviado com sucesso!')),
-      );
-      _toCtrl.clear();
-      _subjCtrl.clear();
-      _bodyCtrl.clear();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao enviar: $e')),
-      );
-    } finally {
-      setState(() => _sending = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext ctx) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Enviar E-mail')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            // Combo Box para selecionar o texto de e-mail
-            DropdownButton<String>(
-              hint: const Text('Selecione o texto de e-mail'),
-              value: _selectedTextoEmail,
-              onChanged: (newValue) {
-                setState(() {
-                  _selectedTextoEmail = newValue;
-                });
-                // Preenche o assunto e o corpo do e-mail quando selecionado
-                _preencherEmail(newValue!);
-              },
-              items: _textosEmailList
-                  .map<DropdownMenuItem<String>>((String value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _toCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Para',
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.emailAddress,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _subjCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Assunto',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: TextField(
-                controller: _bodyCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Corpo da mensagem',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: null,
-                expands: true,
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _sending ? null : _onEnviar,
-                child: _sending
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Text('Enviar E-mail'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return query.docs
+        .map((doc) => (doc['nome'] ?? '').toString())
+        .where((nome) => nome.isNotEmpty)
+        .toList();
   }
 }

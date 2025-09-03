@@ -12,6 +12,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:crud/services/enviar_email.dart';
 import 'package:crud/Pages/tela_config.dart';
 import 'tela_textoEmails.dart';
+import 'tela_enviar_email.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -164,7 +165,7 @@ class HomePage extends StatelessWidget {
               child: const Text('tela de textos de emails'),
             ),
 
-             const SizedBox(height: 20),
+            const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
