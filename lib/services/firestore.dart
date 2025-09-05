@@ -354,11 +354,25 @@ class FirestoreService {
     return null;
   }
 
+Future<void> alterarTextoEmail(String docId, String nome, String texto, bool ativo) async {
+  try {
+    // Usando .set() para garantir que o documento seja atualizado ou criado
+    await FirebaseFirestore.instance.collection('textoEmail').doc(docId).set({
+      'nome': nome,
+      'texto': texto,
+      'inativar': ativo,
+      'timestamp': Timestamp.now(),
+    }, SetOptions(merge: true)); // Usar merge para não sobrescrever outros campos
+  } catch (e) {
+    throw Exception("Erro ao atualizar texto de e-mail: $e");
+  }
+}
+
 // Atualizar configuração pelo documentId
-  Future<void> alterartextoemail(String docId, String novoNome,
+  Future<void> alterartextoEmail(String docId, String novoNome,
       String novotextoEmail, bool inativar) async {
     await textosEmails.doc(docId).update({
-      'valor': novoNome.trim(),
+      'textoEmail': novoNome.trim(),
       'inativar': inativar,
       'timestamp': Timestamp.now(),
     });
@@ -411,7 +425,6 @@ class FirestoreService {
     // 4. Monta mensagem final
     return preencherTags(template, mapaFinal);
   }
-
 
 // Cadastrar nova tag
   Future<void> cadastrarTag(String nome, String valor, bool inativar) async {
@@ -478,8 +491,6 @@ class FirestoreService {
     return tagsMap;
   }
 
-
-  
   // Monta a mensagem final substituindo placeholders pelas tags + valores reais
   String preencherTags(String template, Map<String, String> variaveisUsuario) {
     String mensagem = template;
@@ -533,27 +544,36 @@ class FirestoreService {
   Stream<QuerySnapshot> listarConfigsAtivas() {
     return config.where('ativo', isEqualTo: true).snapshots();
   }
+
   /// Stream com os textos de e-mail ativos (para usar com StreamBuilder)
-  Stream<QuerySnapshot<Map<String, dynamic>>> listarTextosEmailsAtivos() {
-    return textosEmails
-        .where('inativar', isEqualTo: false)
-        .withConverter<Map<String, dynamic>>(
-          fromFirestore: (snap, _) => snap.data() as Map<String, dynamic>,
-          toFirestore: (data, _) => data,
-        )
-        .snapshots();
-  }
 
   /// Busca um documento de texto de e-mail por nome (se ativo)
-  Future<Map<String, dynamic>?> buscarTextoEmail(String nome) async {
-    final snapshot = await textosEmails
-        .where('nome', isEqualTo: nome)
-        .where('inativar', isEqualTo: false)
-        .limit(1)
-        .get();
+  Future<DocumentSnapshot?> buscarTextoEmail(String nome, {bool? ativo}) async {
+    // Limpar espaços extras e tratar o nome em minúsculas
+    String nomeTratado = nome.trim().toLowerCase();
 
-    if (snapshot.docs.isEmpty) return null;
-    return snapshot.docs.first.data() as Map<String, dynamic>;
+    // Cria a consulta básica
+    var query = FirebaseFirestore.instance
+        .collection('textoEmail')
+        .where('nome', isEqualTo: nomeTratado);
+
+    // Se o parâmetro ativo for fornecido, aplica o filtro de 'inativar'
+    if (ativo != null) {
+      query = query.where('inativar', isEqualTo: !ativo); // Ativo ou inativo
+    }
+
+    var snapshot = await query.get();
+
+    if (snapshot.docs.isNotEmpty) {
+      return snapshot.docs.first;
+    } else {
+      return null;
+    }
+  }
+
+  // Função para listar todos os textos de e-mail
+  Stream<QuerySnapshot> listarTodosTextosEmail() {
+    return textosEmails.orderBy('timestamp', descending: true).snapshots();
   }
 
   /// 🔹 Novo: Lista apenas os nomes dos textos ativos (útil para Dropdown)
@@ -565,4 +585,17 @@ class FirestoreService {
         .where((nome) => nome.isNotEmpty)
         .toList();
   }
+
+  // Função dinâmica para alternar o campo "inativar" de qualquer coleção
+Future<void> toggleAtivoGenerico(String collection, String docId, bool ativo) async {
+  try {
+    await FirebaseFirestore.instance.collection(collection).doc(docId).update({
+      'inativar': ativo, // Atualiza o campo 'inativar'
+      'timestamp': Timestamp.now(), // Atualiza o timestamp
+    });
+  } catch (e) {
+    throw Exception("Erro ao atualizar status: $e");
+  }
+}
+
 }

@@ -39,7 +39,7 @@ class HomePage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text("Home Page")),
       body: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(10.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -53,7 +53,7 @@ class HomePage extends StatelessWidget {
               },
               child: const Text('Cadastrar usuário'),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 10),
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
@@ -64,7 +64,7 @@ class HomePage extends StatelessWidget {
               },
               child: const Text('Ir para Tela Tipo Ocorrência'),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 10),
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
@@ -74,7 +74,7 @@ class HomePage extends StatelessWidget {
               },
               child: const Text('Ir para Tela de gravidade'),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 10),
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
@@ -85,7 +85,7 @@ class HomePage extends StatelessWidget {
               },
               child: const Text('Ir para configurações'),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 10),
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
@@ -97,7 +97,7 @@ class HomePage extends StatelessWidget {
               },
               child: const Text('Registrar Ocorrência'),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 10),
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
@@ -109,7 +109,7 @@ class HomePage extends StatelessWidget {
               },
               child: const Text('Tela de login'),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 10),
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
@@ -121,7 +121,7 @@ class HomePage extends StatelessWidget {
               },
               child: const Text('Minhas ocorrências'),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 10),
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
@@ -133,14 +133,14 @@ class HomePage extends StatelessWidget {
               },
               child: const Text('Enviar emails'),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 10),
             // Botão de logout
             ElevatedButton(
               onPressed: () => _logout(context), // Chama a função de logout
               child: const Text('Logout'),
               style: ElevatedButton.styleFrom(),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 10),
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
@@ -152,20 +152,20 @@ class HomePage extends StatelessWidget {
               },
               child: const Text('tela da config'),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 10),
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                       builder: (context) =>
-                          TelaCadastrarTextoEmail()), // Navega para Tela da config
+                          TelaTextoEmails()), // Navega para Tela da config
                 );
               },
               child: const Text('tela de textos de emails'),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 10),
             ElevatedButton(
               onPressed: () {
                 Navigator.push(

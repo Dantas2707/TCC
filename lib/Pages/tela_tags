@@ -58,21 +58,7 @@ class _TelaTagsState extends State<TelaTags> {
   // ==========================
   // Buscar tag pelo nome
   // ==========================
-  Future<void> _buscarTag(String nome) async {
-    final doc = await firestoreService.buscarTag(nome);
-    if (doc != null) {
-      setState(() {
-        _selectedDoc = doc;
-        _nomeController.text = doc['nome'];
-        _valorController.text = doc['valor'];
-        _ativo = !(doc['inativar'] ?? false);
-      });
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Nenhuma tag encontrada para '$nome'")),
-      );
-    }
-  }
+
 
   // ==========================
   // Ativar/Inativar tag
@@ -120,17 +106,7 @@ class _TelaTagsState extends State<TelaTags> {
         child: Column(
           children: [
             // Campo de busca por nome
-            TextFormField(
-              decoration: const InputDecoration(
-                labelText: 'Buscar tag pelo nome',
-                border: OutlineInputBorder(),
-              ),
-              onFieldSubmitted: (value) {
-                if (value.trim().isNotEmpty) {
-                  _buscarTag(value.trim());
-                }
-              },
-            ),
+            
             const SizedBox(height: 16),
 
             // Formulário de cadastro/edição
@@ -228,8 +204,8 @@ class _TelaTagsState extends State<TelaTags> {
                               // Ativar/Inativar
                               IconButton(
                                 icon: Icon(
-                                  inativo ? Icons.visibility : Icons.visibility_off,
-                                  color: inativo ? Colors.green : Colors.red,
+                                  inativo ? Icons.visibility_off : Icons.visibility,
+                                  color: inativo ? Colors.red : Colors.green,
                                 ),
                                 onPressed: () => _toggleAtivo(doc),
                               ),
