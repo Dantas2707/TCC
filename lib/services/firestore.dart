@@ -533,4 +533,36 @@ class FirestoreService {
   Stream<QuerySnapshot> listarConfigsAtivas() {
     return config.where('ativo', isEqualTo: true).snapshots();
   }
+  /// Stream com os textos de e-mail ativos (para usar com StreamBuilder)
+  Stream<QuerySnapshot<Map<String, dynamic>>> listarTextosEmailsAtivos() {
+    return textosEmails
+        .where('inativar', isEqualTo: false)
+        .withConverter<Map<String, dynamic>>(
+          fromFirestore: (snap, _) => snap.data() as Map<String, dynamic>,
+          toFirestore: (data, _) => data,
+        )
+        .snapshots();
+  }
+
+  /// Busca um documento de texto de e-mail por nome (se ativo)
+  Future<Map<String, dynamic>?> buscarTextoEmail(String nome) async {
+    final snapshot = await textosEmails
+        .where('nome', isEqualTo: nome)
+        .where('inativar', isEqualTo: false)
+        .limit(1)
+        .get();
+
+    if (snapshot.docs.isEmpty) return null;
+    return snapshot.docs.first.data() as Map<String, dynamic>;
+  }
+
+  /// 🔹 Novo: Lista apenas os nomes dos textos ativos (útil para Dropdown)
+  Future<List<String>> listarNomesTextosEmails() async {
+    final query = await textosEmails.where('inativar', isEqualTo: false).get();
+
+    return query.docs
+        .map((doc) => (doc['nome'] ?? '').toString())
+        .where((nome) => nome.isNotEmpty)
+        .toList();
+  }
 }
