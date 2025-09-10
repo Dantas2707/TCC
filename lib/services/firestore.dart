@@ -340,43 +340,19 @@ class FirestoreService {
     });
   }
 
-  // Buscar textos dos emails pelo nome
-  Future<DocumentSnapshot?> buscartextoemail(String campo) async {
-    QuerySnapshot snapshot = await config
-        .where('nome', isEqualTo: campo)
-        .where('inativar', isEqualTo: false)
-        .limit(1)
-        .get();
 
-    if (snapshot.docs.isNotEmpty) {
-      return snapshot.docs.first;
-    }
-    return null;
-  }
 
-Future<void> alterarTextoEmail(String docId, String nome, String texto, bool ativo) async {
-  try {
-    // Usando .set() para garantir que o documento seja atualizado ou criado
-    await FirebaseFirestore.instance.collection('textoEmail').doc(docId).set({
-      'nome': nome,
-      'texto': texto,
-      'inativar': ativo,
-      'timestamp': Timestamp.now(),
-    }, SetOptions(merge: true)); // Usar merge para não sobrescrever outros campos
-  } catch (e) {
-    throw Exception("Erro ao atualizar texto de e-mail: $e");
-  }
+// Atualizar texto de e-mail
+Future<void> alterarTextoEmail(
+    String id, String nome, String textoEmail, bool inativar) async {
+  await textosEmails.doc(id).update({
+    'nome': nome.trim(),
+    'textoEmail': textoEmail.trim(),
+    'inativar': inativar,
+    'timestamp': Timestamp.now(), // para manter a data de alteração
+  });
 }
 
-// Atualizar configuração pelo documentId
-  Future<void> alterartextoEmail(String docId, String novoNome,
-      String novotextoEmail, bool inativar) async {
-    await textosEmails.doc(docId).update({
-      'textoEmail': novoNome.trim(),
-      'inativar': inativar,
-      'timestamp': Timestamp.now(),
-    });
-  }
 
   // Excluir textos dos emails do banco de dados (remover o documento)
   Future<void> excluirtextosEmails(String docId) async {
@@ -461,14 +437,10 @@ Future<void> alterarTextoEmail(String docId, String nome, String texto, bool ati
     });
   }
 
-// Inativar/ativar tag
-  Future<void> toggleAtivoTag(String docId, bool ativo) async {
-    // Passar exatamente o valor que você quer no campo 'inativar'
-    await tags.doc(docId).update({
-      'inativar': ativo, // não inverter aqui
-      'timestamp': Timestamp.now(),
-    });
-  }
+// lib/services/firestore.dart
+
+
+
 
 // Excluir tag (remover documento)
   Future<void> excluirTag(String docId) async {
@@ -547,29 +519,29 @@ Future<void> alterarTextoEmail(String docId, String nome, String texto, bool ati
 
   /// Stream com os textos de e-mail ativos (para usar com StreamBuilder)
 
-  /// Busca um documento de texto de e-mail por nome (se ativo)
-  Future<DocumentSnapshot?> buscarTextoEmail(String nome, {bool? ativo}) async {
-    // Limpar espaços extras e tratar o nome em minúsculas
-    String nomeTratado = nome.trim().toLowerCase();
+  // Retorna os dados do documento como Map<String, dynamic>
+// firestore.dart
+Future<QueryDocumentSnapshot<Object?>?> buscarTextoEmail(String nome) async {
+  try {
+    final querySnapshot = await FirebaseFirestore.instance
+        .collection('textosEmails')
+        .where('nome', isEqualTo: nome)
+        .limit(1)
+        .get();
 
-    // Cria a consulta básica
-    var query = FirebaseFirestore.instance
-        .collection('textoEmail')
-        .where('nome', isEqualTo: nomeTratado);
-
-    // Se o parâmetro ativo for fornecido, aplica o filtro de 'inativar'
-    if (ativo != null) {
-      query = query.where('inativar', isEqualTo: !ativo); // Ativo ou inativo
-    }
-
-    var snapshot = await query.get();
-
-    if (snapshot.docs.isNotEmpty) {
-      return snapshot.docs.first;
+    if (querySnapshot.docs.isNotEmpty) {
+      return querySnapshot.docs.first;  // Retorna o QueryDocumentSnapshot
     } else {
-      return null;
+      return null;  // Nenhum documento encontrado
     }
+  } catch (e) {
+    print("Erro ao buscar o texto de e-mail: $e");
+    return null;
   }
+}
+
+
+
 
   // Função para listar todos os textos de e-mail
   Stream<QuerySnapshot> listarTodosTextosEmail() {
@@ -587,15 +559,17 @@ Future<void> alterarTextoEmail(String docId, String nome, String texto, bool ati
   }
 
   // Função dinâmica para alternar o campo "inativar" de qualquer coleção
-Future<void> toggleAtivoGenerico(String collection, String docId, bool ativo) async {
+Future<void> toggleAtivoGenerico(String collection, String docId, bool inativar) async {
   try {
     await FirebaseFirestore.instance.collection(collection).doc(docId).update({
-      'inativar': ativo, // Atualiza o campo 'inativar'
+      'inativar': inativar, // Atualiza o campo 'inativar'
       'timestamp': Timestamp.now(), // Atualiza o timestamp
     });
   } catch (e) {
-    throw Exception("Erro ao atualizar status: $e");
+    throw Exception('Erro ao alternar status: $e');
   }
 }
+
+
 
 }

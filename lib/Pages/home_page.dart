@@ -1,4 +1,3 @@
-import 'package:crud/Pages/tela_tags';
 import 'package:crud/Pages/tela_usuario.dart';
 import 'package:flutter/material.dart';
 import 'tela_tipo_ocorrencia.dart';
@@ -10,9 +9,10 @@ import 'tela_guardiao.dart';
 import 'tela_ocorrencia.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:crud/services/enviar_email.dart';
-import 'package:crud/Pages/tela_config.dart';
+import 'tela_config.dart';
 import 'tela_textoEmails.dart';
 import 'tela_enviar_email.dart';
+import 'localizacao.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -128,7 +128,7 @@ class HomePage extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                       builder: (context) =>
-                          EnviarEmailPage()), // Navega para minhas ocorrenciass
+                          EnviarEmailPage()), 
                 );
               },
               child: const Text('Enviar emails'),
@@ -164,7 +164,6 @@ class HomePage extends StatelessWidget {
               },
               child: const Text('tela de textos de emails'),
             ),
-
             const SizedBox(height: 10),
             ElevatedButton(
               onPressed: () {
@@ -172,10 +171,10 @@ class HomePage extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                       builder: (context) =>
-                          TelaTags()), // Navega para Tela da config
+                          MapaOcorrenciaPage()), // Navega para Tela da config
                 );
               },
-              child: const Text('tela de tags'),
+              child: const Text('tela de localização'),
             ),
           ],
         ),

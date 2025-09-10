@@ -120,7 +120,7 @@ class _TelaUsuarioState extends State<TelaUsuario> {
         // Envia o e-mail pelo backend
         await _emailService.enviarEmailViaBackend(
           to: emailController.text.trim(),
-          subject: 'Boas-vindas ao ImTrouble!',
+          subject: 'Boas-vindas ao InTrouble!',
           body: mensagemFinal,
         );
 
