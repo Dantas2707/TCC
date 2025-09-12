@@ -11,43 +11,46 @@ class EmailBackendService {
 
   final String backendUrl;
 
-  /// 🔹 Lista de tags suportadas (UI lê daqui; mantém sincronizado com a substituição)
+  /// 🔹 Lista de tags suportadas
   static const List<String> supportedTags = <String>[
     '{nome}',          // Nome do remetente (usuário logado)
     '{email}',         // E-mail do remetente
     '{hora}',          // Data/hora atual
     '{guardioes}',     // Lista de nomes dos guardiões do remetente
-    '{nomeGuardiao}',  // Nome do destinatário se existir na coleção 'usuario', senão "Convidado"
-    //endereço
-    //data
-    //GPS/
+    '{nomeGuardiao}',  // Nome do destinatário (guardião)
+    '{socorro}',       // 👈 Texto de socorro da ocorrência
   ];
 
-  /// Envia e-mail via backend HTTP, substituindo automaticamente as tags
-  /// {nome}, {email}, {hora}, {guardioes} e {nomeGuardiao}.
   Future<void> enviarEmailViaBackend({
     required String to,
     required String subject,
     required String body,
     String? htmlBody,
+    String? nomeGuardiao,
+    String? textoSocorro, // 👈 NOVO parâmetro
   }) async {
     if (to.isEmpty || subject.isEmpty || body.isEmpty) {
       throw ArgumentError('Preencha todos os campos obrigatórios.');
     }
 
-    // Substituir as tags dinamicamente
-    final bodyFinal =
-        await _substituirTagsPorValores(body, destinatarioEmail: to);
+    final bodyFinal = await _substituirTagsPorValores(
+      body,
+      destinatarioEmail: to,
+      nomeGuardiao: nomeGuardiao,
+      textoSocorro: textoSocorro, // 👈 encadeia socorro
+    );
+
     final htmlBodyFinal = htmlBody != null
-        ? await _substituirTagsPorValores(htmlBody, destinatarioEmail: to)
+        ? await _substituirTagsPorValores(
+            htmlBody,
+            destinatarioEmail: to,
+            nomeGuardiao: nomeGuardiao,
+            textoSocorro: textoSocorro,
+          )
         : null;
 
-    // Logs simples de depuração
-    // ignore: avoid_print
     print('Enviando e-mail para: $to');
-    // ignore: avoid_print
     print('Assunto: $subject');
-    // ignore: avoid_print
     print('Corpo do e-mail: $bodyFinal');
 
     try {
@@ -65,7 +68,6 @@ class EmailBackendService {
       if (resp.statusCode != 200) {
         throw Exception('Falha ao enviar: ${resp.body}');
       } else {
-        // ignore: avoid_print
         print('E-mail enviado com sucesso!');
       }
     } catch (e) {
@@ -73,22 +75,19 @@ class EmailBackendService {
     }
   }
 
-  /// Substitui dinamicamente as tags do texto.
-  /// `destinatarioEmail` é usado para preencher {nomeGuardiao}.
   Future<String> _substituirTagsPorValores(
     String texto, {
     String? destinatarioEmail,
+    String? nomeGuardiao,
+    String? textoSocorro, // 👈 usado aqui
   }) async {
     final user = FirebaseAuth.instance.currentUser;
 
-    // ------------------- DADOS DO REMETENTE -------------------
     String nomeUsuario = 'Usuário sem nome';
     String emailUsuario = 'E-mail não encontrado';
     if (user != null) {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('usuario')
-          .doc(user.uid)
-          .get();
+      final userDoc =
+          await FirebaseFirestore.instance.collection('usuario').doc(user.uid).get();
       if (userDoc.exists) {
         final data = userDoc.data();
         if (data != null) {
@@ -100,8 +99,7 @@ class EmailBackendService {
 
     final horaAtual = DateTime.now().toString();
 
-    // ------------------- DADOS DOS GUARDIÕES DO REMETENTE -------------------
-    // (coleção 'guardiões' com campos: id_usuario, id_guardiao)
+    // Puxa nomes dos guardiões do remetente
     final guardioesSnapshot = await FirebaseFirestore.instance
         .collection('guardiões')
         .where('id_usuario', isEqualTo: user?.uid)
@@ -111,10 +109,8 @@ class EmailBackendService {
     for (var doc in guardioesSnapshot.docs) {
       final idGuardiao = doc.data()['id_guardiao'];
       if (idGuardiao != null) {
-        final guardiaoDoc = await FirebaseFirestore.instance
-            .collection('usuario')
-            .doc(idGuardiao)
-            .get();
+        final guardiaoDoc =
+            await FirebaseFirestore.instance.collection('usuario').doc(idGuardiao).get();
         if (guardiaoDoc.exists) {
           final gData = guardiaoDoc.data();
           if (gData != null) {
@@ -124,31 +120,30 @@ class EmailBackendService {
       }
     }
 
-    final guardioesString = nomesGuardioes.isNotEmpty
-        ? nomesGuardioes.join(', ')
-        : 'Nenhum guardião encontrado';
+    final guardioesString =
+        nomesGuardioes.isNotEmpty ? nomesGuardioes.join(', ') : 'Nenhum guardião encontrado';
 
-    // ------------------- DADOS DO DESTINATÁRIO -------------------
-    String nomeGuardiao = 'Convidado';
-    if (destinatarioEmail != null && destinatarioEmail.isNotEmpty) {
+    // Se nome do guardião foi passado, usa-o. Senão tenta buscar por e-mail.
+    String nomeDoGuardiao = nomeGuardiao ?? 'Convidado';
+    if (nomeGuardiao == null && destinatarioEmail != null && destinatarioEmail.isNotEmpty) {
       final snapshot = await FirebaseFirestore.instance
           .collection('usuario')
           .where('email', isEqualTo: destinatarioEmail)
           .limit(1)
           .get();
-
       if (snapshot.docs.isNotEmpty) {
         final data = snapshot.docs.first.data();
-        nomeGuardiao = (data['nome'] ?? 'Convidado').toString();
+        nomeDoGuardiao = (data['nome'] ?? 'Convidado').toString();
       }
     }
 
-    // ------------------- SUBSTITUIÇÃO DAS TAGS -------------------
+    // Substituição das tags
     texto = texto.replaceAll('{nome}', nomeUsuario);
     texto = texto.replaceAll('{email}', emailUsuario);
     texto = texto.replaceAll('{hora}', horaAtual);
     texto = texto.replaceAll('{guardioes}', guardioesString);
-    texto = texto.replaceAll('{nomeGuardiao}', nomeGuardiao);
+    texto = texto.replaceAll('{nomeGuardiao}', nomeDoGuardiao);
+    texto = texto.replaceAll('{socorro}', textoSocorro ?? ''); // 👈 substitui pelo texto de socorro
     return texto;
   }
 }

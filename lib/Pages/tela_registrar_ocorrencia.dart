@@ -37,7 +37,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
   final _messenger = FlutterBackgroundMessenger();
 
   String? _tipoSelecionado;
-  String? _gravidadeSelecionada;
+
 
   List<PlatformFile> _anexos = [];
   static const int maxFileSize = 5 * 1024 * 1024;
@@ -84,114 +84,155 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
   }
 
   // instância única do service
-  final EmailBackendService _emailService = EmailBackendService();
-  // Função para enviar e-mail para os guardiões
-  Future<void> enviarEmailGuardioes() async {
-    final selecionados = _guardioes.where((g) => g.selecionado).toList();
-    if (selecionados.isEmpty) return;
+final EmailBackendService _emailService = EmailBackendService();
 
-    const assunto = 'Pedido de Socorro';
-    final corpo = _textoSocorroCtrl.text.trim();
+/// Envia e-mail para os guardiões usando modelo do Firestore + tags {nomeGuardiao} e {socorro}
+Future<void> enviarEmailGuardioes() async {
+  final selecionados = _guardioes.where((g) => g.selecionado).toList();
+  if (selecionados.isEmpty) return;
 
-    for (var g in selecionados) {
-      // 1) Log de depuração
-      debugPrint('🔔 Tentando enviar e-mail para: ${g.email}');
-      if (g.email.isEmpty) {
-        debugPrint('⚠️ E-mail vazio para o guardião ${g.nome}');
-        continue;
-      }
+  // Nome do modelo de e-mail que você vai cadastrar em `textosEmails`
+  const String nomeModeloEmail = 'Pedido de Socorro';
 
-      try {
-         await _emailService.enviarEmailViaBackend( // Usando o prefixo fsEnviarEmail
-          to: g.email,
-          subject: assunto,
-          body: corpo,
-        );
-        debugPrint('✅ E-mail enviado com sucesso para ${g.email}');
-      } catch (e, s) {
-        // 2) Agora imprimimos o stacktrace
-        debugPrint('❌ Erro ao enviar e-mail para ${g.email}: $e');
-        debugPrint('$s');
-        // opcional: exibir um SnackBar só para esse destinatário
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Falha no e-mail de ${g.nome}: $e')),
-        );
-      }
+  // 1) Busca o modelo no Firestore (usa o mesmo _service que você já tem)
+  final docModelo = await _service.buscarTextoEmail('Pedido de socorro');
+
+  if (docModelo == null) {
+    // fallback: se não houver modelo, avisa e não envia
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Modelo de e-mail não encontrado ou inativo.')),
+    );
+    return;
+  }
+
+// 2) Extrai assunto/corpo do modelo (ajuste os campos conforme sua coleção)
+final data = docModelo.data() as Map<String, dynamic>? ?? {};
+
+final String assunto =
+    (data['assunto'] as String?)?.trim().isNotEmpty == true
+        ? (data['assunto'] as String).trim()
+        : 'Pedido de Socorro';
+
+final String corpoModelo =
+    (data['textoEmail'] as String?)?.trim().isNotEmpty == true
+        ? (data['textoEmail'] as String).trim()
+        : ((data['corpo'] as String?) ?? '').trim();
+
+
+  if (corpoModelo.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Modelo de e-mail sem conteúdo.')),
+    );
+    return;
+  }
+
+  // 3) Texto de socorro digitado pela vítima (preenche {socorro})
+  final String textoSocorro = _textoSocorroCtrl.text.trim();
+
+  for (var g in selecionados) {
+    debugPrint('🔔 Tentando enviar e-mail para: ${g.email}');
+    if (g.email.isEmpty) {
+      debugPrint('⚠️ E-mail vazio para o guardião ${g.nome}');
+      continue;
     }
 
-    // 3) Feedback final
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Tentativa de e-mail para ${selecionados.length} guardião(ões)')),
-    );
+    try {
+      // 4) Envia com personalização por guardião
+      await _emailService.enviarEmailViaBackend(
+        to: g.email,
+        subject: assunto,
+        body: corpoModelo,          // o serviço vai substituir as tags
+        nomeGuardiao: g.nome,       // preenche {nomeGuardiao}
+        textoSocorro: textoSocorro, // preenche {socorro}
+      );
+
+      debugPrint('✅ E-mail enviado com sucesso para ${g.email}');
+    } catch (e, s) {
+      debugPrint('❌ Erro ao enviar e-mail para ${g.email}: $e');
+      debugPrint('$s');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha no e-mail de ${g.nome}: $e')),
+      );
+    }
   }
+
+  // 5) Feedback final
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text('Tentativa de e-mail para ${selecionados.length} guardião(ões)')),
+  );
+}
+
 
   Future<void> _registrarOcorrencia() async {
-    // 1) valida dropdowns
-    if (_tipoSelecionado == null || _gravidadeSelecionada == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Selecione tipo e gravidade')),
-      );
-      return;
-    }
-
-    // 2) valida texto
-    final relato = _relatoCtrl.text.trim();
-    final textoSocorro = _textoSocorroCtrl.text.trim();
-    if (relato.isEmpty || textoSocorro.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Preencha todos os campos')),
-      );
-      return;
-    }
-    if (relato.length < 6 || relato.length > 255) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Relato deve ter entre 6 e 255 caracteres')),
-      );
-      return;
-    }
-
-    // 3) grava no Firestore
-    try {
-      await _service.addOcorrencia(
-        _tipoSelecionado!,
-        _gravidadeSelecionada!,
-        relato.toLowerCase(),
-        textoSocorro,
-        _guardioes.any((g) => g.selecionado),
-        anexos: _anexos,
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao registrar ocorrência: $e')),
-      );
-      return;
-    }
-
-    // 4) envia SMS para guardiões selecionados
-    final selecionados = _guardioes.where((g) => g.selecionado).toList();
-    if (selecionados.isNotEmpty) {
-      if (!await Permission.sms.request().isGranted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Permissão de SMS negada')),
-        );
-      } else {
-        for (var g in selecionados) {
-          try {
-            await _messenger.sendSMS(
-              phoneNumber: g.telefone,
-              message: textoSocorro,
-            );
-          } catch (_) {}
-        }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('SMS enviado para ${selecionados.length} guardião(ões)')),
-        );
-      }
-    }
-
-    // 4.1) envia e-mails para guardiões selecionados
-    await enviarEmailGuardioes();
+  // 1) valida apenas o tipo
+  if (_tipoSelecionado == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Selecione o tipo de ocorrência')),
+    );
+    return;
   }
+
+  // 2) valida texto
+  final relato = _relatoCtrl.text.trim();
+  final textoSocorro = _textoSocorroCtrl.text.trim();
+  if (relato.isEmpty || textoSocorro.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Preencha todos os campos')),
+    );
+    return;
+  }
+  if (relato.length < 6 || relato.length > 255) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Relato deve ter entre 6 e 255 caracteres')),
+    );
+    return;
+  }
+
+  // 3) grava no Firestore
+  try {
+    // ⚠️ Se seu FirestoreService ainda espera a gravidade como 2º parâmetro,
+    // passe um texto padrão. Assim você não precisa alterar o service agora.
+    await _service.addOcorrencia(
+      _tipoSelecionado!,
+      'sem gravidade', // <- valor padrão para manter compatibilidade
+      relato.toLowerCase(),
+      textoSocorro,
+      _guardioes.any((g) => g.selecionado),
+      anexos: _anexos,
+    );
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Erro ao registrar ocorrência: $e')),
+    );
+    return;
+  }
+
+  // 4) envia SMS para guardiões selecionados
+  final selecionados = _guardioes.where((g) => g.selecionado).toList();
+  if (selecionados.isNotEmpty) {
+    if (!await Permission.sms.request().isGranted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Permissão de SMS negada')),
+      );
+    } else {
+      for (var g in selecionados) {
+        try {
+          await _messenger.sendSMS(
+            phoneNumber: g.telefone,
+            message: textoSocorro,
+          );
+        } catch (_) {}
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('SMS enviado para ${selecionados.length} guardião(ões)')),
+      );
+    }
+  }
+
+  // 4.1) envia e-mails para guardiões selecionados
+  await enviarEmailGuardioes();
+}
+
 
   @override
   Widget build(BuildContext context) {
@@ -235,39 +276,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
               ),
               SizedBox(height: 16),
 
-              // -- gravidade --
-              StreamBuilder<QuerySnapshot>(
-                stream: _service.getgravidadeStream(),
-                builder: (ctx, snap) {
-                  if (snap.connectionState == ConnectionState.waiting)
-                    return CircularProgressIndicator();
-                  final docs = snap.data?.docs ?? [];
-                  if (docs.isEmpty) {
-                    return Text(
-                      'Nenhuma gravidade cadastrada. Entre em contato com o administrador.',
-                      style: TextStyle(color: Colors.red),
-                    );
-                  }
-                  final gravs = docs
-                      .map((d) => d['gravidade'] as String)
-                      .where((g) => g.toLowerCase() != 'gravissíma')
-                      .toList();
-                  return DropdownButtonFormField<String>(
-                    decoration: InputDecoration(
-                      labelText: 'Gravidade',
-                      border: OutlineInputBorder(),
-                    ),
-                    value: _gravidadeSelecionada,
-                    items: gravs
-                        .map((g) => DropdownMenuItem(value: g, child: Text(g)))
-                        .toList(),
-                    onChanged: (v) => setState(() => _gravidadeSelecionada = v),
-                  );
-                },
-              ),
-              SizedBox(height: 16),
-
-              // -- relato --
+        
               TextFormField(
                 controller: _relatoCtrl,
                 maxLines: 3,
