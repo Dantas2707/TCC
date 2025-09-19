@@ -4,13 +4,19 @@ import 'package:crud/firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-
+import 'package:crud/services/volume_service.dart'; // Adicionando o arquivo de serviço de volume
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Chama a função de iniciar o serviço de monitoramento de volume
+  //VolumeService volumeService = VolumeService();
+  //await volumeService
+    //  .iniciarServico(); // Inicia o serviço logo que o Firebase estiver inicializado
+
   runApp(const MyApp());
 }
 
@@ -37,6 +43,7 @@ class AuthGate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
+      // O StreamBuilder monitora o estado de autenticação
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         // Enquanto aguarda o estado...

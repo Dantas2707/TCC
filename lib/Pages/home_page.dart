@@ -171,7 +171,7 @@ class HomePage extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                       builder: (context) =>
-                          MapaOcorrenciaPage()), // Navega para Tela da config
+                          TelaLocalizacao()), // Navega para Tela da config
                 );
               },
               child: const Text('tela de localização'),

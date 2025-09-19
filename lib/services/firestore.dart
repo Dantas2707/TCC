@@ -2,6 +2,7 @@ import 'dart:io'; // Necessário para manipular arquivos locais (mobile)
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class FirestoreService {
   final CollectionReference tipoOcorrencia =
@@ -257,67 +258,87 @@ class FirestoreService {
   // ==================================================================
   // MÉTODO DE ADIÇÃO DE OCORRÊNCIA COM UPLOAD DE ANEXOS
   // ==================================================================
-  Future<void> addOcorrencia(
-    String tipoOcorrencia,
-    String gravidade,
-    String relato,
-    String textoSocorro,
-    bool enviarParaGuardiao, {
-    List<PlatformFile>? anexos,
-  }) async {
-    List<String> anexosUrls = [];
+  
+Future<void> addOcorrencia(
+  String tipo,
+  String gravidade,
+  String relato,
+  String textoSocorro,
+  bool enviarParaGuardiao, {
+  List<PlatformFile>? anexos,
+  double? latitude,
+  double? longitude,
+}) async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) throw Exception('Usuário não autenticado');
 
-    // Se houver anexos, faz o upload de cada arquivo para o Firebase Storage.
-    if (anexos != null && anexos.isNotEmpty) {
-      for (var file in anexos) {
-        try {
-          String url = await uploadFile(file);
-          anexosUrls.add(url);
-        } catch (e) {
-          print('Erro ao fazer upload do anexo ${file.name}: $e');
-        }
+  final List<String> anexosUrls = [];
+
+  if (anexos != null && anexos.isNotEmpty) {
+    for (final file in anexos) {
+      try {
+        final url = await uploadFile(file);
+        anexosUrls.add(url);
+      } catch (e) {
+        // use logger se tiver, mantive simples:
+        print('Erro ao fazer upload do anexo ${file.name}: $e');
       }
     }
-
-    // Salva a ocorrência no Firestore, incluindo o campo de status "aberto"
-    await ocorrencias.add({
-      'tipoOcorrencia': tipoOcorrencia,
-      'gravidade': gravidade,
-      'relato': relato,
-      'textoSocorro': textoSocorro,
-      'enviarParaGuardiao': enviarParaGuardiao,
-      'status': 'aberto', // Status inicial da ocorrência
-      'anexos': anexosUrls,
-      'timestamp': Timestamp.now(),
-    });
   }
 
-  Stream<QuerySnapshot> getOcorrenciasStream() {
-    return ocorrencias.orderBy('timestamp', descending: true).snapshots();
+  final payload = <String, dynamic>{
+    'ownerUid': user.uid,
+    'tipoOcorrencia': tipo,
+    'gravidade': gravidade,
+    'relato': relato,
+    'textoSocorro': textoSocorro,
+    'enviarParaGuardiao': enviarParaGuardiao,
+    'status': 'aberto',
+    'anexos': anexosUrls,
+    'timestamp': FieldValue.serverTimestamp(),
+  };
+
+  // Só adiciona lat/long se vierem
+  if (latitude != null && longitude != null) {
+    payload['latitude'] = latitude;
+    payload['longitude'] = longitude;
   }
 
+  await ocorrencias.add(payload);
+}
+
+
+  Stream<QuerySnapshot> getOcorrenciasDoUsuarioStream(
+  String uid, {
+  String status = 'aberto',
+}) {
+  return ocorrencias
+      .where('ownerUid', isEqualTo: uid)
+      .where('status', isEqualTo: status)
+      .orderBy('timestamp', descending: true)
+      .snapshots();
+}
+
   // ==================================================================
-  // Função auxiliar para fazer o upload de um único arquivo para o Firebase Storage.
+  // Upload (Storage)
   // ==================================================================
+
   Future<String> uploadFile(PlatformFile file) async {
-    // Cria uma referência única para o arquivo usando timestamp e nome
     final storageRef = FirebaseStorage.instance.ref().child(
-          'ocorrencias/${DateTime.now().millisecondsSinceEpoch}_${file.name}',
-        );
+        'ocorrencias/${DateTime.now().millisecondsSinceEpoch}_${file.name}');
+
     UploadTask uploadTask;
 
-    // Se o arquivo possuir path (mobile), faz o upload com putFile
     if (file.path != null) {
-      File localFile = File(file.path!);
+      final localFile = File(file.path!);
       uploadTask = storageRef.putFile(localFile);
     } else if (file.bytes != null) {
-      // Caso contrário, se houver bytes (ex. Flutter Web), usa putData
       uploadTask = storageRef.putData(file.bytes!);
     } else {
       throw Exception("Arquivo sem dados para upload.");
     }
 
-    TaskSnapshot snapshot = await uploadTask;
+    final snapshot = await uploadTask;
     return await snapshot.ref.getDownloadURL();
   }
 
@@ -340,19 +361,16 @@ class FirestoreService {
     });
   }
 
-
-
 // Atualizar texto de e-mail
-Future<void> alterarTextoEmail(
-    String id, String nome, String textoEmail, bool inativar) async {
-  await textosEmails.doc(id).update({
-    'nome': nome.trim(),
-    'textoEmail': textoEmail.trim(),
-    'inativar': inativar,
-    'timestamp': Timestamp.now(), // para manter a data de alteração
-  });
-}
-
+  Future<void> alterarTextoEmail(
+      String id, String nome, String textoEmail, bool inativar) async {
+    await textosEmails.doc(id).update({
+      'nome': nome.trim(),
+      'textoEmail': textoEmail.trim(),
+      'inativar': inativar,
+      'timestamp': Timestamp.now(), // para manter a data de alteração
+    });
+  }
 
   // Excluir textos dos emails do banco de dados (remover o documento)
   Future<void> excluirtextosEmails(String docId) async {
@@ -439,9 +457,6 @@ Future<void> alterarTextoEmail(
 
 // lib/services/firestore.dart
 
-
-
-
 // Excluir tag (remover documento)
   Future<void> excluirTag(String docId) async {
     await tags.doc(docId).delete();
@@ -521,27 +536,24 @@ Future<void> alterarTextoEmail(
 
   // Retorna os dados do documento como Map<String, dynamic>
 // firestore.dart
-Future<QueryDocumentSnapshot<Object?>?> buscarTextoEmail(String nome) async {
-  try {
-    final querySnapshot = await FirebaseFirestore.instance
-        .collection('textosEmails')
-        .where('nome', isEqualTo: nome)
-        .limit(1)
-        .get();
+  Future<QueryDocumentSnapshot<Object?>?> buscarTextoEmail(String nome) async {
+    try {
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('textosEmails')
+          .where('nome', isEqualTo: nome)
+          .limit(1)
+          .get();
 
-    if (querySnapshot.docs.isNotEmpty) {
-      return querySnapshot.docs.first;  // Retorna o QueryDocumentSnapshot
-    } else {
-      return null;  // Nenhum documento encontrado
+      if (querySnapshot.docs.isNotEmpty) {
+        return querySnapshot.docs.first; // Retorna o QueryDocumentSnapshot
+      } else {
+        return null; // Nenhum documento encontrado
+      }
+    } catch (e) {
+      print("Erro ao buscar o texto de e-mail: $e");
+      return null;
     }
-  } catch (e) {
-    print("Erro ao buscar o texto de e-mail: $e");
-    return null;
   }
-}
-
-
-
 
   // Função para listar todos os textos de e-mail
   Stream<QuerySnapshot> listarTodosTextosEmail() {
@@ -559,17 +571,88 @@ Future<QueryDocumentSnapshot<Object?>?> buscarTextoEmail(String nome) async {
   }
 
   // Função dinâmica para alternar o campo "inativar" de qualquer coleção
-Future<void> toggleAtivoGenerico(String collection, String docId, bool inativar) async {
-  try {
-    await FirebaseFirestore.instance.collection(collection).doc(docId).update({
-      'inativar': inativar, // Atualiza o campo 'inativar'
-      'timestamp': Timestamp.now(), // Atualiza o timestamp
-    });
-  } catch (e) {
-    throw Exception('Erro ao alternar status: $e');
+  Future<void> toggleAtivoGenerico(
+      String collection, String docId, bool inativar) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection(collection)
+          .doc(docId)
+          .update({
+        'inativar': inativar, // Atualiza o campo 'inativar'
+        'timestamp': Timestamp.now(), // Atualiza o timestamp
+      });
+    } catch (e) {
+      throw Exception('Erro ao alternar status: $e');
+    }
   }
-}
 
+  Future<void> editarOcorrencia(
+    String ocorrenciaId, {
+    String? novoRelato,
+    List<PlatformFile>? anexosNovos,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('Usuário não autenticado');
 
+    final ref = ocorrencias.doc(ocorrenciaId);
+    final snap = await ref.get();
+    if (!snap.exists) throw Exception('Ocorrência não encontrada');
 
+    final data = snap.data() as Map<String, dynamic>;
+    final relatoAntigo = (data['relato'] as String?) ?? '';
+    final anexosAntigos =
+        (data['anexos'] as List?)?.cast<String>() ?? const <String>[];
+
+    // 1) Upload dos novos anexos
+    final List<String> urlsNovas = [];
+    if (anexosNovos != null && anexosNovos.isNotEmpty) {
+      for (final file in anexosNovos) {
+        try {
+          final url = await uploadFile(file);
+          urlsNovas.add(url);
+        } catch (e) {
+          print('Falha ao enviar anexo ${file.name}: $e');
+        }
+      }
+    }
+
+    // 2) Novo estado
+    final relatoFinal = (novoRelato ?? relatoAntigo).trim();
+    final anexosFinais = <String>[...anexosAntigos, ...urlsNovas];
+
+    // 3) Entrada de histórico (usar Timestamp.now() dentro do array)
+    final historicoEntry = {
+      'tipo': 'edicao',
+      'editorUid': user.uid,
+      'timestamp': Timestamp.now(),
+      'relatoAnterior': relatoAntigo,
+      'anexosAnteriores': anexosAntigos,
+      'novoRelato': relatoFinal,
+      'novosAnexos': urlsNovas,
+    };
+
+    // 4) Atualização
+    await ref.update({
+      'relato': relatoFinal,
+      'anexos': anexosFinais,
+      'ultimaAtualizacao': FieldValue.serverTimestamp(),
+      'historico': FieldValue.arrayUnion([historicoEntry]),
+    });
+  }
+
+  /// Remover um anexo específico (atualiza histórico)
+  Future<void> removerAnexo(String ocorrenciaId, String url) async {
+    await ocorrencias.doc(ocorrenciaId).update({
+      'anexos': FieldValue.arrayRemove([url]),
+      'ultimaAtualizacao': FieldValue.serverTimestamp(),
+      'historico': FieldValue.arrayUnion([
+        {
+          'tipo': 'remocao_anexo',
+          'editorUid': FirebaseAuth.instance.currentUser?.uid ?? '—',
+          'timestamp': Timestamp.now(), // dentro do array, use Timestamp.now()
+          'removido': url,
+        }
+      ]),
+    });
+  }
 }
