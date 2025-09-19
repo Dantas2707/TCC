@@ -4,6 +4,7 @@ import 'package:crud/firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart'; // 👈 add isto
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,6 +23,19 @@ class MyApp extends StatelessWidget {
       title: 'Meu App',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(primarySwatch: Colors.pink),
+
+      // 👇 habilita pt-BR no app (e no DatePicker)
+      locale: const Locale('pt', 'BR'),
+      supportedLocales: const [
+        Locale('pt', 'BR'),
+        Locale('en', 'US'), // opcional, mantenho inglês também
+      ],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+
       home: const AuthGate(),
     );
   }
@@ -38,20 +52,15 @@ class AuthGate extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // Enquanto aguarda o estado...
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
-
-        // Se o usuário estiver logado, mostra a home
         if (snapshot.hasData) {
           return const HomePage();
         }
-
-        // Caso contrário, mostra a tela de login
-        return const LoginScreen();
+        return const TelaLogin();
       },
     );
   }

@@ -1,28 +1,26 @@
-import 'package:crud/Pages/tela_usuario.dart';
+import 'package:crud/Pages/tela_config.dart';
 import 'package:flutter/material.dart';
-import 'tela_tipo_ocorrencia.dart';
-import 'tela_gravidade.dart';
-import 'tela_configuracoes.dart';
-import 'tela_registrar_ocorrencia.dart'; 
-import 'tela_login.dart';
-import 'tela_guardiao.dart';
-import 'tela_ocorrencia.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'tela_usuario.dart';  // Tela de cadastro de usuário
+import 'tela_tipo_ocorrencia.dart';
+import 'tela_configuracoes.dart';
+import 'tela_registrar_ocorrencia.dart';
+import 'tela_ocorrencia.dart';
+import 'tela_login.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
-  // Função para deslogar o usuário
+  final String adminEmail = 'aplicativo2025tcc@gmail.com';
+
   Future<void> _logout(BuildContext context) async {
     try {
-      await FirebaseAuth.instance.signOut(); // Desloga o usuário
-      // Navega de volta para a tela de login após deslogar
+      await FirebaseAuth.instance.signOut();
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        MaterialPageRoute(builder: (context) => TelaLogin()),
       );
     } catch (e) {
-      // Em caso de erro, você pode mostrar uma mensagem de erro
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Erro ao deslogar: $e')),
       );
@@ -31,93 +29,96 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final bool isAdmin = user?.email == adminEmail;
+
     return Scaffold(
-      appBar: AppBar(title: const Text("Home Page")),
+      appBar: AppBar(
+        title: const Text("InTrouble"),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(20.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const TelaUsuario()),
-                );
-              },
-              child: const Text('Cadastrar usuário'),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const TipoOcorrencia()),
-                );
-              },
-              child: const Text('Ir para Tela Tipo Ocorrência'),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const Gravidade()),
-                );
-              },
-              child: const Text('Ir para Tela de gravidade'),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const SettingsMenuScreen()),
-                );
-              },
-              child: const Text('Ir para configurações'),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => OcorrenciaPage()), // Navega para a tela de ocorrência
-                );
-              },
-              child: const Text('Registrar Ocorrência'),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => LoginScreen()), // Navega para a tela de login
-                );
-              },
-             
-             child: const Text('Tela de login'),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => OcorrenciasPage()), // Navega para minhas ocorrenciass
-                );
-              },
-              child: const Text('Minhas ocorrências'),
-            ),
-            const SizedBox(height: 20),
-            // Botão de logout
-            ElevatedButton(
-              onPressed: () => _logout(context),  // Chama a função de logout
-              child: const Text('Logout'),
-              style: ElevatedButton.styleFrom(
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Botões só para ADMIN
+              if (isAdmin) ...[
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => TelaUsuario()), // O botão agora vai para a tela de cadastro de usuário
+                    );
+                  },
+                  child: const Text('Cadastrar Usuário'),  // Botão para cadastrar usuário
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const TipoOcorrencia()),
+                    );
+                  },
+                  child: const Text('Ir para Tela Tipo Ocorrência'),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ConfigScreen()),
+                    );
+                  },
+                  child: const Text('Configurações (Admin - E-mail)'),
+                ),
+                const SizedBox(height: 20),
+              ],
+
+              // Botão de CONFIG do USUÁRIO (pessoais + guardião) — só para usuário comum
+              if (!isAdmin) ...[
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      // Se você já tem a SettingsMenuScreen, deixe como está:
+                      MaterialPageRoute(builder: (_) => const SettingsMenuScreen()),
+                      // Se NÃO tiver essa tela criada, troque a linha acima por:
+                      // MaterialPageRoute(builder: (_) => const _UserSettingsScreen()),
+                    );
+                  },
+                  child: const Text('Configurações'),
+                ),
+                const SizedBox(height: 20),
+              ],
+
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => OcorrenciaPage()),
+                  );
+                },
+                child: const Text('Registrar Ocorrência'),
               ),
-            ),
-          ],
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => OcorrenciasPage()),
+                  );
+                },
+                child: const Text('Minhas ocorrências'),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () => _logout(context),
+                child: const Text('Logout'),
+              ),
+            ],
+          ),
         ),
       ),
     );

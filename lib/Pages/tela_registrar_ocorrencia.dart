@@ -35,6 +35,13 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
   String? _tipoSelecionado;
   String? _gravidadeSelecionada;
 
+  static const List<String> _gravidadesFixas = <String>[
+    'Baixo',
+    'Médio',
+    'Grave',
+    'Gravíssimo',
+  ];
+
   List<PlatformFile> _anexos = [];
   static const int maxFileSize = 5 * 1024 * 1024;
 
@@ -82,7 +89,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
     // 1) valida dropdowns
     if (_tipoSelecionado == null || _gravidadeSelecionada == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Selecione tipo e gravidade')),
+        const SnackBar(content: Text('Selecione tipo e gravidade')),
       );
       return;
     }
@@ -92,13 +99,13 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
     final textoSocorro = _textoSocorroCtrl.text.trim();
     if (relato.isEmpty || textoSocorro.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Preencha todos os campos')),
+        const SnackBar(content: Text('Preencha todos os campos')),
       );
       return;
     }
     if (relato.length < 6 || relato.length > 255) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Relato deve ter entre 6 e 255 caracteres')),
+        const SnackBar(content: Text('Relato deve ter entre 6 e 255 caracteres')),
       );
       return;
     }
@@ -123,10 +130,9 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
     // 4) envia SMS apenas para guardiões selecionados
     final selecionados = _guardioes.where((g) => g.selecionado).toList();
     if (selecionados.isNotEmpty) {
-      // checa permissão
       if (!await Permission.sms.request().isGranted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Permissão de SMS negada')),
+          const SnackBar(content: Text('Permissão de SMS negada')),
         );
       } else {
         for (var g in selecionados) {
@@ -135,7 +141,9 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
               phoneNumber: g.telefone,
               message: textoSocorro,
             );
-          } catch (_) { /* silêncio em falha individual */ }
+          } catch (_) {
+            // silêncio em falha individual
+          }
         }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('SMS enviado para ${selecionados.length} guardião(ões)')),
@@ -150,10 +158,12 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
       _tipoSelecionado = null;
       _gravidadeSelecionada = null;
       _anexos.clear();
-      for (var g in _guardioes) g.selecionado = false;
+      for (var g in _guardioes) {
+        g.selecionado = false;
+      }
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Ocorrência registrada com sucesso')),
+      const SnackBar(content: Text('Ocorrência registrada com sucesso')),
     );
   }
 
@@ -161,7 +171,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Registrar ocorrência'),
+        title: const Text('Registrar ocorrência'),
         backgroundColor: Colors.pink,
       ),
       body: Padding(
@@ -170,22 +180,25 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // -- tipo de ocorrência --
+              // -- tipo de ocorrência (continua vindo do Firestore) --
               StreamBuilder<QuerySnapshot>(
                 stream: _service.gettipoOcorrenciaStream(),
                 builder: (ctx, snap) {
-                  if (snap.connectionState == ConnectionState.waiting)
-                    return CircularProgressIndicator();
+                  if (snap.connectionState == ConnectionState.waiting) {
+                    return const CircularProgressIndicator();
+                  }
                   final docs = snap.data?.docs ?? [];
                   if (docs.isEmpty) {
-                    return Text(
+                    return const Text(
                       'Nenhum tipo de ocorrência encontrado. Entre em contato com o administrador.',
                       style: TextStyle(color: Colors.red),
                     );
                   }
-                  final tipos = docs.map((d) => d['tipoOcorrencia'] as String).toList();
+                  final tipos = docs
+                      .map((d) => d['tipoOcorrencia'] as String)
+                      .toList();
                   return DropdownButtonFormField<String>(
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                       labelText: 'Tipo de ocorrência',
                       border: OutlineInputBorder(),
                     ),
@@ -197,39 +210,21 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                   );
                 },
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-              // -- gravidade --
-              StreamBuilder<QuerySnapshot>(
-                stream: _service.getgravidadeStream(),
-                builder: (ctx, snap) {
-                  if (snap.connectionState == ConnectionState.waiting)
-                    return CircularProgressIndicator();
-                  final docs = snap.data?.docs ?? [];
-                  if (docs.isEmpty) {
-                    return Text(
-                      'Nenhuma gravidade cadastrada. Entre em contato com o administrador.',
-                      style: TextStyle(color: Colors.red),
-                    );
-                  }
-                  final gravs = docs
-                      .map((d) => d['gravidade'] as String)
-                      .where((g) => g.toLowerCase() != 'gravissíma')
-                      .toList();
-                  return DropdownButtonFormField<String>(
-                    decoration: InputDecoration(
-                      labelText: 'Gravidade',
-                      border: OutlineInputBorder(),
-                    ),
-                    value: _gravidadeSelecionada,
-                    items: gravs
-                        .map((g) => DropdownMenuItem(value: g, child: Text(g)))
-                        .toList(),
-                    onChanged: (v) => setState(() => _gravidadeSelecionada = v),
-                  );
-                },
+              // -- gravidade (hardcoded) --
+              DropdownButtonFormField<String>(
+                decoration: const InputDecoration(
+                  labelText: 'Gravidade',
+                  border: OutlineInputBorder(),
+                ),
+                value: _gravidadeSelecionada,
+                items: _gravidadesFixas
+                    .map((g) => DropdownMenuItem(value: g, child: Text(g)))
+                    .toList(),
+                onChanged: (v) => setState(() => _gravidadeSelecionada = v),
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
 
               // -- relato --
               TextFormField(
@@ -238,13 +233,12 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                 decoration: InputDecoration(
                   labelText: 'Relato',
                   hintText: 'Digite o seu relato aqui (6 a 255 caracteres)',
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
                   filled: true,
                   fillColor: Colors.red[50],
                 ),
               ),
-              SizedBox(height: 16),
-              
+              const SizedBox(height: 16),
 
               // -- texto socorro --
               TextFormField(
@@ -254,21 +248,21 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                 decoration: InputDecoration(
                   labelText: 'Texto Socorro',
                   hintText: 'Digite a mensagem de socorro aqui',
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
                   filled: true,
                   fillColor: Colors.red[50],
                 ),
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
 
               // -- anexar mídia --
               ElevatedButton.icon(
                 onPressed: _pickAnexos,
-                icon: Icon(Icons.attach_file),
-                label: Text('Anexar Mídia'),
+                icon: const Icon(Icons.attach_file),
+                label: const Text('Anexar Mídia'),
               ),
               if (_anexos.isNotEmpty) ...[
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
                   runSpacing: 4,
@@ -277,45 +271,38 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                     final file = entry.value;
                     return Chip(
                       label: Text(file.name, overflow: TextOverflow.ellipsis),
-                      deleteIcon: Icon(Icons.close),
+                      deleteIcon: const Icon(Icons.close),
                       onDeleted: () => setState(() => _anexos.removeAt(idx)),
                     );
                   }).toList(),
                 ),
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
               ],
 
               // -- lista de guardiões --
               if (_guardioes.isEmpty)
-                Text('Você não possui guardiões cadastrados.')
+                const Text('Você não possui guardiões cadastrados.')
               else ...[
-                Text('Selecione para quais enviar SMS:',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text(
+                  'Selecione para quais enviar SMS:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
                 ..._guardioes.map((g) => CheckboxListTile(
                       title: Text(g.nome),
                       subtitle: Text(g.telefone),
                       value: g.selecionado,
                       onChanged: (v) => setState(() => g.selecionado = v!),
                     )),
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
               ],
 
               // -- botões --
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  ElevatedButton(
-                    onPressed: _registrarOcorrencia,
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                    child: Text('Registrar'),
-                  ),
-                  // mantenho um S.O.S manual, mas opcional:
-                  ElevatedButton(
-                    onPressed: () => _registrarOcorrencia(),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                    child: Text('S.O.S'),
-                  ),
-                ],
+              Center(
+                child: ElevatedButton(
+                  onPressed: _registrarOcorrencia,
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                  child: const Text('Registrar'),
+                ),
               ),
             ],
           ),

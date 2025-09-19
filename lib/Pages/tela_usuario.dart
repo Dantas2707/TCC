@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:crud/services/firestore.dart';
 import 'tela_login.dart';
-import 'dart:convert'; // Necessário para codificação UTF-8
-import 'package:crypto/crypto.dart'; // Pacote para gerar hash
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import 'package:crud/services/Enviar_mensagem.dart';
+import 'package:crud/services/enviar_email.dart';
+import 'package:intl/intl.dart';
 
 class TelaUsuario extends StatefulWidget {
   const TelaUsuario({Key? key}) : super(key: key);
@@ -18,38 +21,24 @@ class _TelaUsuarioState extends State<TelaUsuario> {
 
   final nomeController = TextEditingController();
   final emailController = TextEditingController();
-  final cpfController = TextEditingController();
   final telefoneController = TextEditingController();
   final dataNascController = TextEditingController();
-  final senhaController = TextEditingController(); // Senha 1
-  final senhaConfirmController = TextEditingController(); // Senha 2
+  final senhaController = TextEditingController();
+  final senhaConfirmController = TextEditingController();
 
   String? _sexoSelecionado;
 
-  // Função para validar o CPF
-  bool validarCPF(String cpf) {
-    cpf = cpf.replaceAll(RegExp(r'[^0-9]'), '');
-    if (cpf.length != 11) return false;
-    List<int> numeros = cpf.split('').map(int.parse).toList();
-    for (int j = 9; j < 11; j++) {
-      int soma = 0;
-      for (int i = 0; i < j; i++) {
-        soma += numeros[i] * ((j + 1) - i);
-      }
-      int resto = (soma * 10) % 11;
-      if (resto == 10) resto = 0;
-      if (resto != numeros[j]) return false;
-    }
-    return true;
+  @override
+  void initState() {
+    super.initState();
+    FirebaseAuth.instance.setLanguageCode('pt');
   }
 
-  // Função para validar o e-mail
   bool validarEmail(String email) {
     RegExp regex = RegExp(r'^.+@[a-zA-Z]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?$');
     return regex.hasMatch(email);
   }
 
-  // Função para gerar o hash da senha (SHA-256)
   String gerarHashSenha(String senha) {
     final bytes = utf8.encode(senha);
     final hash = sha256.convert(bytes);
@@ -57,17 +46,40 @@ class _TelaUsuarioState extends State<TelaUsuario> {
   }
 
   Future<void> selecionarDataNascimento(BuildContext context) async {
-    DateTime hoje = DateTime.now();
-    DateTime? dataEscolhida = await showDatePicker(
+    final hoje = DateTime.now();
+
+    final dataEscolhida = await showDatePicker(
       context: context,
       initialDate: DateTime(hoje.year - 20),
       firstDate: DateTime(hoje.year - 120),
       lastDate: DateTime(hoje.year - 13),
+      locale: const Locale('pt', 'BR'),
+      helpText: 'Selecione a data de nascimento',
+      cancelText: 'Cancelar',
+      confirmText: 'OK',
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFFF2C4CD), // dia selecionado + botões
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFFF2C4CD), // cor dos botões
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
+
     if (dataEscolhida != null) {
       setState(() {
         dataNascController.text =
-            dataEscolhida.toIso8601String().split('T').first;
+            DateFormat('dd/MM/yyyy', 'pt_BR').format(dataEscolhida);
       });
     }
   }
@@ -82,68 +94,84 @@ class _TelaUsuarioState extends State<TelaUsuario> {
       }
 
       try {
-        // Gera o hash da senha
-        String hashSenha = gerarHashSenha(senhaController.text.trim());
+        final dataNasc = DateFormat('dd/MM/yyyy', 'pt_BR')
+            .parseStrict(dataNascController.text.trim());
 
-        // Cria o usuário no Firebase Authentication
-        UserCredential authResult = await FirebaseAuth.instance
+        final hashSenha = gerarHashSenha(senhaController.text.trim());
+
+        final authResult = await FirebaseAuth.instance
             .createUserWithEmailAndPassword(
           email: emailController.text.trim(),
           password: senhaController.text.trim(),
         );
-        String uid = authResult.user!.uid;
+        final uid = authResult.user!.uid;
 
-        // Envia o e-mail de verificação
         await authResult.user!.sendEmailVerification();
 
-        // Prepara os dados do usuário
-        Map<String, dynamic> dadosUsuario = {
+        final dadosUsuario = {
           'nome': nomeController.text.trim(),
           'email': emailController.text.trim(),
-          'cpf': cpfController.text.trim(),
           'numerotelefone': telefoneController.text.trim(),
-          'dataNasc': DateTime.parse(dataNascController.text),
+          'dataNasc': dataNasc,
           'sexo': _sexoSelecionado,
           'inativar': false,
           'timestamp': DateTime.now(),
           'senha': hashSenha,
         };
 
-        // Salva os dados no Firestore utilizando o UID do usuário
         await firestoreService.addUsuario(uid, dadosUsuario);
 
+        final mensagemTemplate =
+            await buscarMensagemPorCampo('mensagem_email_boas_vindas');
+        if (mensagemTemplate != null) {
+          final mensagemPersonalizada = preencherVariaveisMensagem(
+            mensagemTemplate,
+            {'nome': nomeController.text.trim()},
+          );
+          await enviarEmailViaBackend(
+            to: emailController.text.trim(),
+            subject: 'Boas-vindas ao ImTrouble!',
+            body: mensagemPersonalizada,
+          );
+        }
+
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Usuário registrado com sucesso!')),
         );
 
-        // Exibe um diálogo solicitando a verificação do e-mail
         showDialog(
           context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
             title: const Text("Verificação de Email"),
             content: const Text(
-                "Um link de verificação foi enviado ao seu email. Por favor, confirme seu email para ativar sua conta e realizar o login."),
+              "Um link de verificação foi enviado ao seu email. "
+              "Por favor, confirme seu email para ativar sua conta e realizar o login.",
+            ),
             actions: [
               TextButton(
                 onPressed: () async {
-                  // Atualiza os dados do usuário para verificar a propriedade emailVerified
                   await FirebaseAuth.instance.currentUser?.reload();
                   if (FirebaseAuth.instance.currentUser?.emailVerified ?? false) {
+                    if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                          content:
-                              Text('Email verificado. Faça login agora.')),
+                        content: Text('Email verificado. Faça login agora.'),
+                      ),
                     );
                     Navigator.pushReplacement(
                       context,
-                      MaterialPageRoute(builder: (context) => LoginScreen()),
+                      MaterialPageRoute(builder: (context) => const TelaLogin()),
                     );
                   } else {
+                    if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                          content: Text(
-                              'Email ainda não verificado. Por favor, verifique seu email.')),
+                        content: Text(
+                          'Email ainda não verificado. Por favor, verifique seu email.',
+                        ),
+                      ),
                     );
                   }
                 },
@@ -161,10 +189,12 @@ class _TelaUsuarioState extends State<TelaUsuario> {
           senhaConfirmController.clear();
         });
       } on FirebaseAuthException catch (e) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erro: ${e.message}')),
         );
       } catch (e) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erro: $e')),
         );
@@ -174,6 +204,8 @@ class _TelaUsuarioState extends State<TelaUsuario> {
 
   @override
   Widget build(BuildContext context) {
+    final pink = const Color(0xFFF2C4CD);
+
     return Scaffold(
       appBar: AppBar(title: const Text("Registrar Usuário")),
       body: SingleChildScrollView(
@@ -182,7 +214,7 @@ class _TelaUsuarioState extends State<TelaUsuario> {
           key: _formKey,
           child: Column(
             children: [
-              // Campo Nome
+              // Nome
               TextFormField(
                 controller: nomeController,
                 decoration: const InputDecoration(labelText: 'Nome'),
@@ -190,7 +222,7 @@ class _TelaUsuarioState extends State<TelaUsuario> {
                   if (value == null || value.trim().isEmpty) {
                     return 'Nome é obrigatório.';
                   }
-                  String nome = value.trim();
+                  final nome = value.trim();
                   if (!RegExp(r'^[A-Za-zÀ-ÿ\s]+$').hasMatch(nome)) {
                     return 'Nome deve conter apenas letras e espaços.';
                   }
@@ -200,15 +232,14 @@ class _TelaUsuarioState extends State<TelaUsuario> {
                   return null;
                 },
               ),
-              // Campo E-mail
+              // E-mail
               TextFormField(
                 controller: emailController,
                 decoration: const InputDecoration(labelText: 'E-mail'),
-                validator: (value) => value == null || !validarEmail(value)
-                    ? 'E-mail inválido.'
-                    : null,
+                validator: (value) =>
+                    value == null || !validarEmail(value) ? 'E-mail inválido.' : null,
               ),
-              // Campo de Senha
+              // Senha
               TextFormField(
                 controller: senhaController,
                 decoration: const InputDecoration(labelText: 'Senha'),
@@ -223,7 +254,7 @@ class _TelaUsuarioState extends State<TelaUsuario> {
                   return null;
                 },
               ),
-              // Campo Confirmar Senha
+              // Confirmar Senha
               TextFormField(
                 controller: senhaConfirmController,
                 decoration: const InputDecoration(labelText: 'Confirmar Senha'),
@@ -238,59 +269,65 @@ class _TelaUsuarioState extends State<TelaUsuario> {
                   return null;
                 },
               ),
-              // Campo CPF
-              TextFormField(
-                controller: cpfController,
-                decoration: const InputDecoration(labelText: 'CPF'),
-                keyboardType: TextInputType.number,
-                validator: (value) => value == null || !validarCPF(value)
-                    ? 'CPF inválido.'
-                    : null,
-              ),
-              // Campo Telefone
+              // Telefone
               TextFormField(
                 controller: telefoneController,
                 decoration: const InputDecoration(labelText: 'Telefone'),
                 keyboardType: TextInputType.phone,
-                validator: (value) => value == null ||
-                        value.length < 8 ||
-                        value.length > 20
-                    ? 'Telefone deve ter entre 8 e 20 caracteres.'
-                    : null,
+                validator: (value) =>
+                    value == null || value.length < 8 || value.length > 20
+                        ? 'Telefone deve ter entre 8 e 20 caracteres.'
+                        : null,
               ),
-              // Campo Data de Nascimento
+              // Data de Nascimento
               TextFormField(
                 controller: dataNascController,
-                decoration:
-                    const InputDecoration(labelText: 'Data Nascimento'),
+                decoration: const InputDecoration(labelText: 'Data Nascimento'),
                 readOnly: true,
                 onTap: () => selecionarDataNascimento(context),
-                validator: (value) => value == null || value.isEmpty
-                    ? 'Selecione uma data válida.'
-                    : null,
+                validator: (value) {
+                  final txt = value?.trim() ?? '';
+                  if (txt.isEmpty) return 'Selecione uma data válida.';
+                  try {
+                    DateFormat('dd/MM/yyyy', 'pt_BR').parseStrict(txt);
+                    return null;
+                  } catch (_) {
+                    return 'Use o formato dd/MM/yyyy.';
+                  }
+                },
               ),
-              // Dropdown para Sexo
+              // Sexo
               DropdownButtonFormField<String>(
                 value: _sexoSelecionado,
                 decoration: const InputDecoration(labelText: 'Sexo'),
                 items: const [
-                  DropdownMenuItem(
-                      value: 'Masculino', child: Text('Masculino')),
-                  DropdownMenuItem(
-                      value: 'Feminino', child: Text('Feminino')),
+                  DropdownMenuItem(value: 'Masculino', child: Text('Masculino')),
+                  DropdownMenuItem(value: 'Feminino', child: Text('Feminino')),
                 ],
-                onChanged: (valor) {
-                  setState(() {
-                    _sexoSelecionado = valor;
-                  });
-                },
-                validator: (value) =>
-                    value == null ? 'Selecione o sexo.' : null,
+                onChanged: (valor) => setState(() => _sexoSelecionado = valor),
+                validator: (value) => value == null ? 'Selecione o sexo.' : null,
               ),
               const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: registrarUsuario,
-                child: const Text("Registrar"),
+
+              // ✅ Botão Registrar estilizado
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: registrarUsuario,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: pink,         // fundo 0xFFF2C4CD
+                    foregroundColor: Colors.white, // texto branco
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  child: const Text("Registrar"),
+                ),
               ),
             ],
           ),
