@@ -2,9 +2,7 @@
 
 Segue alguns comandos do Firebase e Git usados neste projeto.
 
-===============================
 Comandos Firebase e Flutter
-===============================
 
 >> Firebase CLI
 
@@ -47,9 +45,8 @@ flutter build apk --release
 Gera o APK final (otimizado para produção) do aplicativo para Android.
 
 
-===============================
 Comandos Git/GitHub
-===============================
+
 
 >> Inicializar repositório
 
