@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'tela_config.dart';
 import 'tela_tipo_ocorrencia.dart';
-import 'tela_login.dart'; // Tela de login
-import 'tela_usuario.dart';  // Tela de cadastro de usuário
+import 'tela_login.dart';
+import 'tela_usuario.dart';
+import 'tela_enviar_email.dart';
+import 'tela_textoEmails.dart';
 
 class TelaAdminHome extends StatelessWidget {
   const TelaAdminHome({super.key});
@@ -26,51 +28,90 @@ class TelaAdminHome extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Painel do Administrador')),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Botão para cadastrar usuário
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => TelaUsuario()), // Agora o botão leva à tela de cadastro de usuário
-                );
-              },
-              child: const Text('Cadastrar Usuário'),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => ConfigScreen()),
-                );
-              },
-              child: const Text('Configurações'),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => TipoOcorrencia()),
-                );
-              },
-              child: const Text('Tipos de Ocorrência'),
-            ),
-            const SizedBox(height: 40),
-            // Botão de Logout
-            ElevatedButton(
-              onPressed: () => _logout(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red, // vermelho para destacar
+      appBar: AppBar(
+        title: const Text('Painel do Administrador'),
+        backgroundColor: const Color.fromARGB(255, 255, 0, 0), // Cor do AppBar
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0), // Adicionando padding para o conteúdo
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Botão para cadastrar usuário
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => TelaUsuario()),
+                  );
+                },
+                child: const Text('Cadastrar Usuário'),
               ),
-              child: const Text('Logout'),
-            ),
-          ],
+              const SizedBox(height: 20), // Espaçamento entre os botões
+              
+              // Botão de configurações
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => ConfigScreen()),
+                  );
+                },
+                child: const Text('Configurar'),
+              ),
+              const SizedBox(height: 20), // Espaçamento entre os botões
+              
+              // Botão para tipos de ocorrência
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => TipoOcorrencia()),
+                  );
+                },
+                child: const Text('Tipos de Ocorrência'),
+              ),
+              const SizedBox(height: 20), // Espaçamento entre os botões
+
+              // Botão para Enviar Email
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => EnviarEmailPage()),
+                  );
+                },
+                child: const Text('Enviar Email'),
+              ),
+              const SizedBox(height: 20), // Espaçamento entre os botões
+
+              // Botão para Texto de Emails
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => TelaTextoEmails()),
+                  );
+                },
+                child: const Text('Texto de Emails'),
+              ),
+              const SizedBox(height: 40), // Maior espaçamento antes do botão de logout
+              
+              // Botão de Logout
+              ElevatedButton(
+                onPressed: () => _logout(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red, // Cor vermelha para destacar o botão de logout
+                  padding: const EdgeInsets.symmetric(vertical: 15.0, horizontal: 40.0),
+                ),
+                child: const Text(
+                  'Logout',
+                  style: TextStyle(fontSize: 18, color: Colors.white),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

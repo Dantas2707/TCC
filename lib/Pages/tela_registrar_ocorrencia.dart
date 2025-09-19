@@ -1,3 +1,4 @@
+// ignore: unused_import
 import 'dart:io';
 import 'package:crud/services/firestore.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -182,7 +183,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
             children: [
               // -- tipo de ocorrência (continua vindo do Firestore) --
               StreamBuilder<QuerySnapshot>(
-                stream: _service.gettipoOcorrenciaStream(),
+                stream: _service.getTipoOcorrenciaStream(),
                 builder: (ctx, snap) {
                   if (snap.connectionState == ConnectionState.waiting) {
                     return const CircularProgressIndicator();

@@ -4,9 +4,36 @@ import 'package:crud/services/firestore.dart';
 import 'tela_login.dart';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
-import 'package:crud/services/Enviar_mensagem.dart';
-import 'package:crud/services/enviar_email.dart';
 import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+Future<String?> buscarMensagemPorCampo(String chave) async {
+  final qs = await FirebaseFirestore.instance
+      .collection('mensagens')
+      .where('chave', isEqualTo: chave)
+      .limit(1)
+      .get();
+  if (qs.docs.isEmpty) return null;
+  final data = qs.docs.first.data();
+  return (data['conteudo'] as String?)?.trim();
+}
+
+/// Substitui variáveis estilo {{nome}} no template
+String preencherVariaveisMensagem(String template, Map<String, String> vars) {
+  var out = template;
+  vars.forEach((k, v) => out = out.replaceAll('{{$k}}', v));
+  return out;
+}
+
+/// Stub para envio de email via backend (implemente sua API depois)
+Future<void> enviarEmailViaBackend({
+  required String to,
+  required String subject,
+  required String body,
+}) async {
+  // TODO: implemente chamada HTTP/Cloud Function aqui.
+  // Mantido vazio para não quebrar compilação.
+}
 
 class TelaUsuario extends StatefulWidget {
   const TelaUsuario({Key? key}) : super(key: key);
@@ -35,7 +62,8 @@ class _TelaUsuarioState extends State<TelaUsuario> {
   }
 
   bool validarEmail(String email) {
-    RegExp regex = RegExp(r'^.+@[a-zA-Z]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?$');
+    // Regex simples e permissivo
+    final regex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$');
     return regex.hasMatch(email);
   }
 
@@ -116,18 +144,21 @@ class _TelaUsuarioState extends State<TelaUsuario> {
           'sexo': _sexoSelecionado,
           'inativar': false,
           'timestamp': DateTime.now(),
-          'senha': hashSenha,
+          'senha': hashSenha, // remova se não quiser salvar hash no Firestore
         };
 
         await firestoreService.addUsuario(uid, dadosUsuario);
 
+        // Busca e envia mensagem de boas-vindas (fallback local)
         final mensagemTemplate =
             await buscarMensagemPorCampo('mensagem_email_boas_vindas');
+
         if (mensagemTemplate != null) {
           final mensagemPersonalizada = preencherVariaveisMensagem(
             mensagemTemplate,
             {'nome': nomeController.text.trim()},
           );
+
           await enviarEmailViaBackend(
             to: emailController.text.trim(),
             subject: 'Boas-vindas ao ImTrouble!',
@@ -309,15 +340,15 @@ class _TelaUsuarioState extends State<TelaUsuario> {
               ),
               const SizedBox(height: 20),
 
-              // ✅ Botão Registrar estilizado
+              // Botão Registrar estilizado
               SizedBox(
                 width: double.infinity,
                 height: 48,
                 child: ElevatedButton(
                   onPressed: registrarUsuario,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: pink,         // fundo 0xFFF2C4CD
-                    foregroundColor: Colors.white, // texto branco
+                    backgroundColor: pink,
+                    foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),

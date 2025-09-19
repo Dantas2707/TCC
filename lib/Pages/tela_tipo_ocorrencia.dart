@@ -98,7 +98,7 @@ class _TipoOcorrenciaState extends State<TipoOcorrencia> {
         child: const Icon(Icons.add),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: firestoreService.gettipoOcorrenciaStream(),
+        stream: firestoreService.getTipoOcorrenciaStream(),
         builder: (context, snapshot) {
           if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
             List tipoOcorrenciaList = snapshot.data!.docs;
