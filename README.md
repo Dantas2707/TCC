@@ -113,9 +113,8 @@ git reset --hard origin/main
 Descarta todas as alterações locais e sincroniza com o remoto.
 
 
-===============================
 Links Úteis Flutter
-===============================
+
 
 Este projeto é um ponto de partida para aplicações Flutter.
 
