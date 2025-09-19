@@ -1,9 +1,6 @@
-# Aplicativo
+# Comandos Firebase e Flutter
 
 Segue alguns comandos do Firebase e Git usados neste projeto.
-
-
-Comandos Firebase e Flutter
 
 
 >> Firebase CLI
