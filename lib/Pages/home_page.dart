@@ -7,6 +7,8 @@ import 'tela_configuracoes.dart';
 import 'tela_registrar_ocorrencia.dart';
 import 'tela_ocorrencia.dart';
 import 'tela_login.dart';
+import 'tela_localizacao.dart';
+import 'tela_sos.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -112,6 +114,27 @@ class HomePage extends StatelessWidget {
                 },
                 child: const Text('Minhas ocorrências'),
               ),
+                const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => GuardianMapPage()),
+                  );
+                },
+                child: const Text('localização da vítima'),                
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => TelaVitimaSOS()),
+                  );
+                },
+                child: const Text('SOS'),                
+              ),
+
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () => _logout(context),

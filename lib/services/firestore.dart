@@ -17,7 +17,7 @@ class FirestoreService {
 
   // Troquei "guardiões" -> "guardioes"
   final CollectionReference guardioes =
-      FirebaseFirestore.instance.collection("guardioes");
+      FirebaseFirestore.instance.collection("guardiões");
 
   final CollectionReference config =
       FirebaseFirestore.instance.collection('config');
@@ -28,38 +28,46 @@ class FirestoreService {
   // ==============================================================
   // GUARDIÕES
   // ==============================================================
-
+  /// Envia convite para um guardião por e-mail.
+  /// [email] é o e-mail do possível guardião e [idUsuario] é o ID do usuário que está enviando o convite.
   Future<void> convidarGuardiaoPorEmail(String email, String idUsuario) async {
     try {
-      final userSnapshot = await usuario.where('email', isEqualTo: email).get();
+      // Verifica se o e-mail corresponde a um usuário registrado na coleção 'usuario'
+      QuerySnapshot userSnapshot =
+          await usuario.where('email', isEqualTo: email).get();
 
       if (userSnapshot.docs.isNotEmpty) {
-        final String idGuardiao = userSnapshot.docs.first.id;
+        // O usuário com esse e-mail existe (possível guardião)
+        String idGuardiao = userSnapshot.docs.first.id;
 
-        final duplicado = await guardioes
+        // Verifica se já existe uma relação de guardião entre esse usuário e o guardião
+        QuerySnapshot duplicado = await guardioes
             .where('id_usuario', isEqualTo: idUsuario)
             .where('id_guardiao', isEqualTo: idGuardiao)
-            .limit(1)
             .get();
 
         if (duplicado.docs.isNotEmpty) {
           throw Exception("Esta relação de guardião já existe.");
         }
 
-        final senderDoc = await usuario.doc(idUsuario).get();
-        final String nomeUsuario = (senderDoc.data() as Map?)?['nome']?.toString() ?? '';
+        // Obtém o nome do usuário que está enviando o convite
+        DocumentSnapshot senderDoc = await usuario.doc(idUsuario).get();
+        String nomeUsuario = senderDoc.get('nome');
 
+        // Cria um documento de convite na coleção 'guardiões'
         await guardioes.add({
-          'id_usuario': idUsuario,
-          'nome_usuario': nomeUsuario,
-          'id_guardiao': idGuardiao,
-          'convidado': true, // troquei 'invitado' -> 'convidado'
-          'timestamp': FieldValue.serverTimestamp(),
-          'status': 'pendente',
+          'id_usuario': idUsuario, // ID do usuário que está enviando o convite
+          'nome_usuario': nomeUsuario, // Nome do usuário que enviou o convite
+          'id_guardiao': idGuardiao, // ID do possível guardião
+          'invitado': true, // Marca o documento como convite
+          'timestamp': Timestamp.now(),
+          'status': 'pendente', // Status inicial: pendente
         });
+
+        print("Convite enviado para o e-mail: $email");
       } else {
-        // aqui você pode disparar e-mail/SMS externo
         print("Usuário não encontrado. Enviando convite para baixar o app.");
+        // Aqui você pode implementar o envio de um convite para baixar o aplicativo.
       }
     } catch (e) {
       print("Erro ao convidar guardião: $e");
@@ -67,22 +75,27 @@ class FirestoreService {
     }
   }
 
+  /// Aceita o convite de guardião.
+  /// [conviteDocId] é o ID do documento de convite na coleção 'guardiões',
+  /// [idUsuario] é o ID do usuário que enviou o convite e [idGuardiao] é o ID do guardião (usuário logado).
   Future<void> aceitarConviteGuardiao(
       String conviteDocId, String idUsuario, String idGuardiao) async {
     try {
+      // Atualiza o documento do convite para "aceito"
       await guardioes.doc(conviteDocId).update({
         'status': 'aceito',
-        'timestamp': FieldValue.serverTimestamp(),
+        'timestamp': Timestamp.now(),
       });
 
+      // Atualiza o documento do usuário que enviou o convite:
+      // Adiciona o ID do guardião à lista de guardiões desse usuário
       await usuario.doc(idUsuario).update({
         'guardioes': FieldValue.arrayUnion([idGuardiao]),
-        'timestamp': FieldValue.serverTimestamp(),
       });
 
+      // Atualiza o documento do guardião para marcá-lo como guardião
       await usuario.doc(idGuardiao).update({
         'guardiao': true,
-        'timestamp': FieldValue.serverTimestamp(),
       });
     } catch (e) {
       print("Erro ao aceitar convite: $e");
@@ -90,11 +103,13 @@ class FirestoreService {
     }
   }
 
+  /// Recusa o convite de guardião.
+  /// [conviteDocId] é o ID do documento do convite a ser atualizado.
   Future<void> recusarConviteGuardiao(String conviteDocId) async {
     try {
       await guardioes.doc(conviteDocId).update({
         'status': 'recusado',
-        'timestamp': FieldValue.serverTimestamp(),
+        'timestamp': Timestamp.now(),
       });
     } catch (e) {
       print("Erro ao recusar convite: $e");
@@ -102,11 +117,11 @@ class FirestoreService {
     }
   }
 
+  /// Retorna um stream dos convites pendentes para o guardião com [idGuardiao].
   Stream<QuerySnapshot> getConvitesRecebidosGuardiao(String idGuardiao) {
     return guardioes
         .where('id_guardiao', isEqualTo: idGuardiao)
         .where('status', isEqualTo: 'pendente')
-        .orderBy('timestamp', descending: true)
         .snapshots();
   }
 
@@ -118,7 +133,8 @@ class FirestoreService {
     final tipoOcorrenciaFormatado = tipoOcorrenciaText.trim().toLowerCase();
     if (tipoOcorrenciaFormatado.length < 3 ||
         tipoOcorrenciaFormatado.length > 100) {
-      throw Exception("O tipo de ocorrência deve ter entre 3 e 100 caracteres.");
+      throw Exception(
+          "O tipo de ocorrência deve ter entre 3 e 100 caracteres.");
     }
 
     final duplicado = await tipoOcorrencia
@@ -198,7 +214,7 @@ class FirestoreService {
   }
 
   // ==================================================================
-  // OCORRÊNCIAS
+  // MÉTODO DE ADIÇÃO DE OCORRÊNCIA COM UPLOAD DE ANEXOS
   // ==================================================================
 
   Future<void> addOcorrencia(
@@ -208,6 +224,8 @@ class FirestoreService {
     String textoSocorro,
     bool enviarParaGuardiao, {
     List<PlatformFile>? anexos,
+    double? latitude,
+    double? longitude,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw Exception('Usuário não autenticado');
@@ -220,12 +238,13 @@ class FirestoreService {
           final url = await uploadFile(file);
           anexosUrls.add(url);
         } catch (e) {
+          // use logger se tiver, mantive simples:
           print('Erro ao fazer upload do anexo ${file.name}: $e');
         }
       }
     }
 
-    await ocorrencias.add({
+    final payload = <String, dynamic>{
       'ownerUid': user.uid,
       'tipoOcorrencia': tipo,
       'gravidade': gravidade,
@@ -235,9 +254,15 @@ class FirestoreService {
       'status': 'aberto',
       'anexos': anexosUrls,
       'timestamp': FieldValue.serverTimestamp(),
-      'ultimaAtualizacao': FieldValue.serverTimestamp(),
-      'historico': [], // inicia histórico vazio
-    });
+    };
+
+    // Só adiciona lat/long se vierem
+    if (latitude != null && longitude != null) {
+      payload['latitude'] = latitude;
+      payload['longitude'] = longitude;
+    }
+
+    await ocorrencias.add(payload);
   }
 
   Stream<QuerySnapshot> getOcorrenciasDoUsuarioStream(
@@ -249,6 +274,49 @@ class FirestoreService {
         .where('status', isEqualTo: status)
         .orderBy('timestamp', descending: true)
         .snapshots();
+  }
+
+  /// 🔎 Pega o ID do SOS ABERTO mais recente do usuário logado (ou null se não houver)
+  Future<String?> _getSosAbertoDocIdAtual() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('Usuário não autenticado');
+
+    final snap = await ocorrencias
+        .where('ownerUid', isEqualTo: user.uid)
+        .where('status', isEqualTo: 'aberto')
+        // .orderBy('timestamp', descending: true) // (opcional) se quiser ordenar, crie o índice composto
+        .limit(1)
+        .get();
+
+    if (snap.docs.isEmpty) return null;
+    return snap.docs.first.id;
+  }
+
+  /// 📍 Atualiza SOMENTE a localização do SOS aberto (se existir)
+  Future<void> updateLocalizacaoSosAberto({
+    required double latitude,
+    required double longitude,
+  }) async {
+    final docId = await _getSosAbertoDocIdAtual();
+    if (docId == null) return; // não há SOS aberto
+
+    await ocorrencias.doc(docId).update({
+      'latitude': latitude,
+      'longitude': longitude,
+      // 'localizacao': GeoPoint(latitude, longitude), // opcional
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// ⛔ Finaliza o SOS aberto (se existir)
+  Future<void> encerrarSosAberto() async {
+    final docId = await _getSosAbertoDocIdAtual();
+    if (docId == null) return; // nada para encerrar
+
+    await ocorrencias.doc(docId).update({
+      'status': 'finalizado', // ✅ padronizado
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<void> finalizarOcorrencia(String ocorrenciaId) async {
@@ -407,10 +475,8 @@ class FirestoreService {
 
   Future<QueryDocumentSnapshot<Object?>?> buscarTextoEmail(String nome) async {
     try {
-      final querySnapshot = await textosEmails
-          .where('nome', isEqualTo: nome)
-          .limit(1)
-          .get();
+      final querySnapshot =
+          await textosEmails.where('nome', isEqualTo: nome).limit(1).get();
 
       if (querySnapshot.docs.isNotEmpty) {
         return querySnapshot.docs.first;
@@ -428,8 +494,7 @@ class FirestoreService {
   }
 
   Future<List<String>> listarNomesTextosEmails() async {
-    final query =
-        await textosEmails.where('inativar', isEqualTo: false).get();
+    final query = await textosEmails.where('inativar', isEqualTo: false).get();
 
     return query.docs
         .map((doc) => (doc['nome'] ?? '').toString())
@@ -482,7 +547,10 @@ class FirestoreService {
   Future<void> toggleAtivoGenerico(
       String collection, String docId, bool inativar) async {
     try {
-      await FirebaseFirestore.instance.collection(collection).doc(docId).update({
+      await FirebaseFirestore.instance
+          .collection(collection)
+          .doc(docId)
+          .update({
         'inativar': inativar,
         'timestamp': FieldValue.serverTimestamp(),
       });

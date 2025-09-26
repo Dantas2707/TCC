@@ -7,17 +7,20 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_background_messenger/flutter_background_messenger.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:crud/services/enviar_email.dart';
 
 /// Modelo para cada guardião
 class _Guardiao {
   final String id;
   final String nome;
   final String telefone;
+  final String email;
   bool selecionado;
   _Guardiao({
     required this.id,
     required this.nome,
     required this.telefone,
+    required this.email,
     this.selecionado = false,
   });
 }
@@ -57,19 +60,22 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
 
   Future<void> _loadGuardioes() async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
-    final doc = await FirebaseFirestore.instance.collection('usuario').doc(uid).get();
+    final doc =
+        await FirebaseFirestore.instance.collection('usuario').doc(uid).get();
     if (!doc.exists) return;
     final data = doc.data()!;
-    final ids = List<String>.from(data['guardioes'] ?? []);
+    final ids = List<String>.from(data['guardiões'] ?? []);
     final list = <_Guardiao>[];
     for (var gid in ids) {
-      final gd = await FirebaseFirestore.instance.collection('usuario').doc(gid).get();
+      final gd =
+          await FirebaseFirestore.instance.collection('usuario').doc(gid).get();
       if (!gd.exists) continue;
       final d = gd.data()!;
       list.add(_Guardiao(
         id: gid,
         nome: d['nome'] ?? 'Sem nome',
         telefone: d['numerotelefone'] ?? '',
+        email: d['email'] ?? '',
       ));
     }
     setState(() => _guardioes = list);
@@ -79,11 +85,101 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
     final result = await FilePicker.platform.pickFiles(
       allowMultiple: true,
       type: FileType.custom,
-      allowedExtensions: ['jpg','jpeg','png','mp4','mov','avi','mp3','wav'],
+      allowedExtensions: [
+        'jpg',
+        'jpeg',
+        'png',
+        'mp4',
+        'mov',
+        'avi',
+        'mp3',
+        'wav'
+      ],
     );
     if (result != null) {
       setState(() => _anexos.addAll(result.files));
     }
+  }
+
+  // instância única do service
+  final EmailBackendService _emailService = EmailBackendService();
+
+  /// Envia e-mail para os guardiões usando modelo do Firestore + tags {nomeGuardiao} e {socorro}
+  Future<void> enviarEmailGuardioes() async {
+    final selecionados = _guardioes.where((g) => g.selecionado).toList();
+    if (selecionados.isEmpty) return;
+
+    // Nome do modelo de e-mail que você vai cadastrar em `textosEmails`
+    const String nomeModeloEmail = 'Pedido de Socorro';
+
+    // 1) Busca o modelo no Firestore (usa o mesmo _service que você já tem)
+    final docModelo = await _service.buscarTextoEmail('Pedido de socorro');
+
+    if (docModelo == null) {
+      // fallback: se não houver modelo, avisa e não envia
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Modelo de e-mail não encontrado ou inativo.')),
+      );
+      return;
+    }
+
+    // 2) Extrai assunto/corpo do modelo (ajuste os campos conforme sua coleção)
+    final data = docModelo.data() as Map<String, dynamic>? ?? {};
+
+    final String assunto =
+        (data['assunto'] as String?)?.trim().isNotEmpty == true
+            ? (data['assunto'] as String).trim()
+            : 'Pedido de Socorro';
+
+    final String corpoModelo =
+        (data['textoEmail'] as String?)?.trim().isNotEmpty == true
+            ? (data['textoEmail'] as String).trim()
+            : ((data['corpo'] as String?) ?? '').trim();
+
+    if (corpoModelo.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Modelo de e-mail sem conteúdo.')),
+      );
+      return;
+    }
+
+    // 3) Texto de socorro digitado pela vítima (preenche {socorro})
+    final String textoSocorro = _textoSocorroCtrl.text.trim();
+
+    for (var g in selecionados) {
+      debugPrint('🔔 Tentando enviar e-mail para: ${g.email}');
+      if (g.email.isEmpty) {
+        debugPrint('⚠️ E-mail vazio para o guardião ${g.nome}');
+        continue;
+      }
+
+      try {
+        // 4) Envia com personalização por guardião
+        await _emailService.enviarEmailViaBackend(
+          to: g.email,
+          subject: assunto,
+          body: corpoModelo, // o serviço vai substituir as tags
+          nomeGuardiao: g.nome, // preenche {nomeGuardiao}
+          textoSocorro: textoSocorro, // preenche {socorro}
+        );
+
+        debugPrint('✅ E-mail enviado com sucesso para ${g.email}');
+      } catch (e, s) {
+        debugPrint('❌ Erro ao enviar e-mail para ${g.email}: $e');
+        debugPrint('$s');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Falha no e-mail de ${g.nome}: $e')),
+        );
+      }
+    }
+
+    // 5) Feedback final
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+          content: Text(
+              'Tentativa de e-mail para ${selecionados.length} guardião(ões)')),
+    );
   }
 
   Future<void> _registrarOcorrencia() async {
@@ -106,7 +202,8 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
     }
     if (relato.length < 6 || relato.length > 255) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Relato deve ter entre 6 e 255 caracteres')),
+        const SnackBar(
+            content: Text('Relato deve ter entre 6 e 255 caracteres')),
       );
       return;
     }
@@ -147,7 +244,9 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
           }
         }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('SMS enviado para ${selecionados.length} guardião(ões)')),
+          SnackBar(
+              content: Text(
+                  'SMS enviado para ${selecionados.length} guardião(ões)')),
         );
       }
     }
@@ -166,6 +265,9 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Ocorrência registrada com sucesso')),
     );
+
+    // 4.1) envia e-mails para guardiões selecionados
+    await enviarEmailGuardioes();
   }
 
   @override
@@ -195,9 +297,8 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                       style: TextStyle(color: Colors.red),
                     );
                   }
-                  final tipos = docs
-                      .map((d) => d['tipoOcorrencia'] as String)
-                      .toList();
+                  final tipos =
+                      docs.map((d) => d['tipoOcorrencia'] as String).toList();
                   return DropdownButtonFormField<String>(
                     decoration: const InputDecoration(
                       labelText: 'Tipo de ocorrência',
